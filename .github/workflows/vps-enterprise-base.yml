@@ -1,0 +1,357 @@
+name: VPS Enterprise Hardening
+
+on:
+  workflow_dispatch:
+    inputs:
+      vps_ip:
+        description: 'Target VPS IP'
+        required: true
+      root_user:
+        description: 'Current Root User'
+        default: 'root'
+        required: true
+      root_password:
+        description: 'Current Root Password'
+        required: true
+      new_username:
+        description: 'New Admin User'
+        required: true
+      new_password:
+        description: 'New Admin Password'
+        required: true
+      new_ssh_port:
+        description: 'New SSH Port (Custom)'
+        default: '2222'
+        required: true
+
+jobs:
+  secure-provision:
+    name: Provision Enterprise Server
+    runs-on: ubuntu-latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install Runner Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass netcat-openbsd
+
+      - name: Generate CI/CD SSH Keys
+        run: |
+          # Generate a dedicated key for this workflow run
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "github-actions-runner"
+          chmod 600 ~/.ssh/id_ed25519
+          echo "[OK] CI/CD Keys Generated."
+
+      # ------------------------------------------------------------------
+      # PHASE 1: PRE-FLIGHT & SYSTEM PREP
+      # ------------------------------------------------------------------
+      
+      - name: Connection & Lock Check
+        run: |
+          echo "Connecting to ${{ inputs.vps_ip }}..."
+          sshpass -p "${{ inputs.root_password }}" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            ${{ inputs.root_user }}@${{ inputs.vps_ip }} '
+              echo "[OK] Connection Established."
+              
+              # APT LOCK WAIT LOOP (Crucial for fresh VPS)
+              echo "[WAIT] Checking for background updates..."
+              while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1 ; do
+                echo "Waiting for apt lock release..."
+                sleep 5
+              done
+              echo "[OK] Apt is free to use."
+              
+              # Set Timezone to UTC (Enterprise Standard)
+              timedatectl set-timezone UTC
+              echo "Timezone set to UTC."
+            '
+
+      - name: System Update & Security Tools
+        run: |
+          echo "Installing Security Stack..."
+          sshpass -p "${{ inputs.root_password }}" ssh -o StrictHostKeyChecking=no ${{ inputs.root_user }}@${{ inputs.vps_ip }} '
+            apt-get update -y
+            # Install essentials + libpam-tmpdir (prevents /tmp race conditions)
+            apt-get install -y ufw fail2ban auditd chrony unattended-upgrades apt-listchanges curl gnupg lsb-release htop libpam-tmpdir
+            apt-get upgrade -y
+            apt-get autoremove -y
+          '
+
+      # ------------------------------------------------------------------
+      # PHASE 2: IDENTITY MANAGEMENT
+      # ------------------------------------------------------------------
+
+      - name: Setup Admin User & Inject Keys
+        run: |
+          # Read the generated public key
+          CI_PUB_KEY=$(cat ~/.ssh/id_ed25519.pub)
+
+          sshpass -p "${{ inputs.root_password }}" ssh -o StrictHostKeyChecking=no ${{ inputs.root_user }}@${{ inputs.vps_ip }} "
+            # Create User
+            if ! id "${{ inputs.new_username }}" &>/dev/null; then
+                useradd -m -s /bin/bash ${{ inputs.new_username }}
+                echo "${{ inputs.new_username }}:${{ inputs.new_password }}" | chpasswd
+                usermod -aG sudo ${{ inputs.new_username }}
+                echo "User ${{ inputs.new_username }} created."
+            fi
+
+            # Setup SSH Directory for New User
+            USER_HOME=\"/home/${{ inputs.new_username }}\"
+            mkdir -p \$USER_HOME/.ssh
+            
+            # Inject CI/CD Key (for robust reconnection)
+            echo \"\$CI_PUB_KEY\" >> \$USER_HOME/.ssh/authorized_keys
+            
+            # Generate Internal Key (for user usage later)
+            if [ ! -f \"\$USER_HOME/.ssh/id_ed25519\" ]; then
+                ssh-keygen -t ed25519 -f \$USER_HOME/.ssh/id_ed25519 -N \"\" -C \"internal-key\"
+            fi
+
+            # Fix Permissions
+            chown -R ${{ inputs.new_username }}:${{ inputs.new_username }} \$USER_HOME/.ssh
+            chmod 700 \$USER_HOME/.ssh
+            chmod 600 \$USER_HOME/.ssh/authorized_keys
+            chmod 600 \$USER_HOME/.ssh/id_ed25519
+            chmod 644 \$USER_HOME/.ssh/id_ed25519.pub
+          "
+
+      # ------------------------------------------------------------------
+      # PHASE 3: DEEP SYSTEM HARDENING
+      # ------------------------------------------------------------------
+
+      - name: Kernel, Memory & Audit Hardening
+        run: |
+          sshpass -p "${{ inputs.root_password }}" ssh -o StrictHostKeyChecking=no ${{ inputs.root_user }}@${{ inputs.vps_ip }} '
+            # 1. Secure Shared Memory (/dev/shm) - Prevent code execution here
+            if ! grep -q "/dev/shm" /etc/fstab; then
+              echo "tmpfs /dev/shm tmpfs defaults,noexec,nosuid 0 0" >> /etc/fstab
+              mount -o remount /dev/shm || true
+            fi
+
+            # 2. Sysctl Hardening
+            printf "net.ipv4.conf.all.rp_filter = 1\nnet.ipv4.icmp_echo_ignore_broadcasts = 1\nnet.ipv4.conf.all.accept_source_route = 0\nnet.ipv4.tcp_syncookies = 1\nnet.ipv4.conf.all.log_martians = 1\nkernel.kptr_restrict = 2\nkernel.dmesg_restrict = 1\n" > /etc/sysctl.d/99-security.conf
+            sysctl -p /etc/sysctl.d/99-security.conf
+
+            # 3. Audit Rules
+            echo "-w /etc/passwd -p wa -k identity" > /etc/audit/rules.d/audit.rules
+            echo "-w /etc/ssh/sshd_config -p warx -k sshd_config" >> /etc/audit/rules.d/audit.rules
+            systemctl restart auditd
+            
+            # 4. Custom MOTD (Warning Banner)
+            rm -f /etc/update-motd.d/* 2>/dev/null
+            printf "=======================================================\n WARNING: RESTRICTED ACCESS SYSTEM\n All activities on this system are logged and monitored.\n Unauthorized access will be reported.\n=======================================================\n" > /etc/motd
+          '
+
+      # ------------------------------------------------------------------
+      # PHASE 4: NETWORK & SSH TRANSITION (RISK ZONE)
+      # ------------------------------------------------------------------
+
+      - name: Firewall Setup & SSH Switch
+        run: |
+          sshpass -p "${{ inputs.root_password }}" ssh -o StrictHostKeyChecking=no ${{ inputs.root_user }}@${{ inputs.vps_ip }} '
+            # UFW Setup
+            ufw --force reset
+            ufw default deny incoming
+            ufw default allow outgoing
+            
+            # Allow BOTH ports temporarily
+            ufw allow 22/tcp
+            ufw allow ${{ inputs.new_ssh_port }}/tcp
+            
+            echo "y" | ufw enable
+            
+            # Fail2Ban Setup for New Port
+            cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+            printf "[sshd]\nenabled = true\nport = ${{ inputs.new_ssh_port }}\nmaxretry = 3\nbantime = 3600\n" >> /etc/fail2ban/jail.local
+            systemctl restart fail2ban
+
+            # SSH Config
+            # IMPORTANT: Configuring BOTH Server (sshd_config) and Client (ssh_config) as requested.
+            SSHD_CONF="/etc/ssh/sshd_config"
+            SSH_CLIENT_CONF="/etc/ssh/ssh_config"
+            
+            cp $SSHD_CONF "$SSHD_CONF.bak"
+            # --- 1. Configure Server (Incoming Connections) ---
+            if [ -f "$SSHD_CONF" ]; then
+                cp "$SSHD_CONF" "$SSHD_CONF.bak"
+                
+                # Clean up Port definitions in main config
+                sed -i "/^[[:space:]]*#*Port /d" "$SSHD_CONF"
+                
+                # Insert the new Port at the TOP of the file
+                sed -i "1i Port ${{ inputs.new_ssh_port }}" "$SSHD_CONF"
+                
+                # Update other Server settings
+                sed -i "s/^#*PermitRootLogin .*/PermitRootLogin yes/" "$SSHD_CONF"
+                sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" "$SSHD_CONF"
+                sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" "$SSHD_CONF"
+                
+                # Explicit Whitelist
+                sed -i "/^AllowUsers/d" "$SSHD_CONF"
+                echo "AllowUsers ${{ inputs.new_username }} root" >> "$SSHD_CONF"
+            else
+                echo "ERROR: $SSHD_CONF not found!"
+                exit 1
+            fi
+            
+            # Clean up Port definitions in included configs (Server)
+            if [ -d "/etc/ssh/sshd_config.d" ]; then
+                find /etc/ssh/sshd_config.d -type f -name "*.conf" -exec sed -i "/^[[:space:]]*#*Port /d" {} + || true
+            fi
+
+            # --- 2. Configure Client (Outgoing/Local Connections) ---
+            if [ -f "$SSH_CLIENT_CONF" ]; then
+                cp "$SSH_CLIENT_CONF" "$SSH_CLIENT_CONF.bak"
+                
+                # Clean up Port definitions in main config
+                sed -i "/^[[:space:]]*#*Port /d" "$SSH_CLIENT_CONF"
+                
+                # Insert the new Port at the TOP of the file
+                sed -i "1i Port ${{ inputs.new_ssh_port }}" "$SSH_CLIENT_CONF"
+            fi
+            
+            # Clean up Port definitions in included configs (Client)
+            if [ -d "/etc/ssh/ssh_config.d" ]; then
+                find /etc/ssh/ssh_config.d -type f -name "*.conf" -exec sed -i "/^[[:space:]]*#*Port /d" {} + || true
+            fi
+
+            # SAFETY CHECK: Validate Config before Restart
+            echo "Validating SSH Configuration..."
+            sshd -t
+            
+            # Double check what sshd thinks the port is
+            echo "Verifying effective SSH Port..."
+            # Use cut instead of awk to avoid single-quote escaping hell inside sshpass
+            EFFECTIVE_PORT=$(sshd -T | grep "^port " | cut -d " " -f 2)
+            echo "SSHD reports it will listen on: $EFFECTIVE_PORT"
+            
+            if [ "$EFFECTIVE_PORT" != "${{ inputs.new_ssh_port }}" ]; then
+                echo "WARNING: SSHD is not picking up the new port! Please check /etc/ssh/sshd_config.d/ manually."
+            fi
+            
+            # Verify Firewall Status
+            echo "Verifying Firewall Rules..."
+            if ! ufw status | grep -q "${{ inputs.new_ssh_port }}/tcp"; then
+                 echo "WARNING: New SSH Port ${{ inputs.new_ssh_port }} is NOT allowed in UFW!"
+            else
+                 echo "[OK] New SSH Port ${{ inputs.new_ssh_port }} is allowed in UFW."
+            fi
+
+            echo "Configuration Validated. Scheduling SSH Restart..."
+            
+            echo "Scheduling System Reboot..."
+            
+            # We use reboot to ensure clean socket/service binding on the new port
+            # This avoids the 'Connection Refused' issues common with live restarts on systemd
+            nohup sh -c "sleep 2; reboot" >/dev/null 2>&1 &
+            echo "[OK] Reboot Initiated. Connection will close."
+          ' || true
+
+      # ------------------------------------------------------------------
+      # PHASE 5: VERIFICATION & CLEANUP
+      # ------------------------------------------------------------------
+
+      - name: Wait for VPS Reboot
+        run: |
+          echo "Waiting for VPS to reboot and come back online..."
+          # Wait for system to go down
+          sleep 15
+          
+          MAX_RETRIES=30
+          COUNT=0
+          
+          echo "Polling for SSH on NEW Port ${{ inputs.new_ssh_port }}..."
+          while [ $COUNT -lt $MAX_RETRIES ]; do
+            if nc -z -v -w 5 ${{ inputs.vps_ip }} ${{ inputs.new_ssh_port }} 2>/dev/null; then
+              echo "[OK] VPS is back online! Port ${{ inputs.new_ssh_port }} is reachable."
+              exit 0
+            fi
+            echo "Waiting for VPS... ($COUNT/$MAX_RETRIES)"
+            sleep 10
+            COUNT=$((COUNT+1))
+          done
+          
+          echo "[FAIL] VPS did not come back online on port ${{ inputs.new_ssh_port }} after reboot."
+          exit 1
+
+      - name: Close Old Port & Cleanup
+        run: |
+          echo "Closing Port 22 & Locking Root..."
+          
+          TARGET_PORT="${{ inputs.new_ssh_port }}"
+          
+          # 1. Smart Port Detection (Fallback to 22 if 2222 is unreachable)
+          if ! nc -z -w 5 ${{ inputs.vps_ip }} $TARGET_PORT; then
+             echo "[WARN] Port $TARGET_PORT seems unreachable. Checking Port 22..."
+             if nc -z -w 5 ${{ inputs.vps_ip }} 22; then
+                echo "[WARN] Port 22 is OPEN. Falling back to Port 22 for cleanup."
+                TARGET_PORT="22"
+             else
+                echo "[ERROR] Could not reach VPS on port $TARGET_PORT or 22."
+                exit 1
+             fi
+          fi
+
+          # 2. Safety Check: Don't close 22 if we are using it!
+          if [ "$TARGET_PORT" == "22" ]; then
+            echo "[WARN] Current SSH Port is 22. Skipping closure of Port 22 to prevent lockout."
+            exit 0
+          fi
+
+          # 3. Execute Cleanup with Robust Password Passing
+          # We use sshpass to GUARANTEE connection even if key setup had issues
+          # This ensures we don't leave the server in a vulnerable state (port 22 open)
+          sshpass -p "${{ inputs.new_password }}" ssh -o StrictHostKeyChecking=no -p $TARGET_PORT \
+            ${{ inputs.new_username }}@${{ inputs.vps_ip }} '
+              # We export the password to a variable inside the session for sudo use
+              export SUDO_PASS="${{ inputs.new_password }}"
+              
+              echo "Connected as ${{ inputs.new_username }}. Proceeding with Root Lockout..."
+              
+              # 0. Generate SSH Key for the user (Security Best Practice)
+              # We generate this as the user to ensure correct ownership and permissions
+              if [ ! -f ~/.ssh/id_ed25519 ]; then
+                  echo "Generating SSH Key for ${{ inputs.new_username }}..."
+                  ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "${{ inputs.new_username }}@$(hostname)"
+                  chmod 600 ~/.ssh/id_ed25519
+                  chmod 644 ~/.ssh/id_ed25519.pub
+                  echo "SSH Key generated successfully."
+              fi
+              
+              # 1. Close Port 22 (Old Port)
+              echo "$SUDO_PASS" | sudo -S ufw delete allow 22/tcp
+              echo "$SUDO_PASS" | sudo -S ufw reload
+              
+              # 2. Disable Root Login
+              echo "$SUDO_PASS" | sudo -S sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
+              
+              # 3. Restrict AllowUsers to ONLY the new user
+              # This removes "root" from the list we created in Phase 4
+              echo "$SUDO_PASS" | sudo -S sed -i "/^AllowUsers/d" /etc/ssh/sshd_config
+              echo "AllowUsers ${{ inputs.new_username }}" | echo "$SUDO_PASS" | sudo -S tee -a /etc/ssh/sshd_config > /dev/null
+              
+              # 4. Reload SSH to apply changes
+              echo "$SUDO_PASS" | sudo -S service ssh reload || sudo systemctl reload sshd
+              
+              echo "[OK] Security Hardening Complete. Root Login Disabled. Port 22 Closed."
+            '
+
+      - name: Display Connection Details
+        if: success()
+        run: |
+          echo "=============================================="
+          echo "   *** VPS PROVISIONING COMPLETE (v2) ***"
+          echo "=============================================="
+          echo "IP Address:   ${{ inputs.vps_ip }}"
+          echo "SSH Port:     ${{ inputs.new_ssh_port }}"
+          echo "Admin User:   ${{ inputs.new_username }}"
+          echo "Auth Method:  Password OR Key"
+          echo "=============================================="
+          echo "Next Step: Run 'Install & Secure Applications'"
+          echo "=============================================="

@@ -1,0 +1,136 @@
+name: Install & Secure Applications
+
+on:
+  workflow_dispatch:
+    inputs:
+      vps_ip:
+        description: 'Target VPS IP'
+        required: true
+      ssh_user:
+        description: 'Admin Username'
+        required: true
+      ssh_password:
+        description: 'Admin Password'
+        required: true
+      ssh_port:
+        description: 'SSH Port'
+        default: '2222'
+        required: true
+      wg_password:
+        description: 'WireGuard Password (Optional)'
+        required: false
+      selection:
+        description: 'Select Application'
+        required: true
+        type: choice
+        options:
+          # --- INFRASTRUCTURE ---
+          - "Docker | docker"
+          - "NodeJS | nodejs"
+          - "Portainer | portainer"
+          - "Arcane | arcane"
+          
+          # --- WEB SERVERS ---
+          - "Nginx | nginx"
+          - "Certbot | certbot"
+          - "Uptime Kuma | uptime-kuma"
+          
+          # --- DATABASES ---
+          - "Redis | redis"
+          - "Postgres | postgresql"
+          - "MySQL | mysql"
+          - "MariaDB | mariadb"
+          - "MongoDB | mongodb"
+          
+          # --- AUTOMATION ---
+          - "n8n | n8n"
+          
+          # --- MONITORING ---
+          - "Netdata | netdata"
+          - "Prometheus | prometheus"
+          - "Grafana | grafana"
+          
+          # --- SECURITY ---
+          - "Wireguard | wireguard"
+          - "Security-audit | security-audit"
+          - "Restic | restic"
+          
+          # --- MAINTENANCE ---
+          - "Log-maintenance | log-maintenance"
+          - "Cockpit | cockpit"
+
+jobs:
+  deploy-app:
+    name: Install ${{ inputs.selection }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Script Path Dynamically
+        id: resolve
+        run: |
+          # 1. Extract script name from input (right side)
+          # Ex: "Infrastructure | docker" -> "docker"
+          SCRIPT_NAME=$(echo "${{ inputs.selection }}" | awk -F ' \\| ' '{print $2}')
+          
+          # --- DEPENDENCY CHECK / WARNINGS ---
+          if [ "$SCRIPT_NAME" == "n8n" ]; then
+             echo "::warning title=Dependency Check::n8n requires PostgreSQL to be installed FIRST. If you haven't installed 'Postgres | postgresql' yet, this installation might fail or be incomplete."
+          fi
+          
+          echo "[SEARCH] Searching for $SCRIPT_NAME.sh in apps/ directory..."
+          
+          # 2. Search recursively in apps/ folder
+          # -print -quit stops at the first result found
+          FOUND_PATH=$(find apps -name "$SCRIPT_NAME.sh" -print -quit)
+          
+          if [ -z "$FOUND_PATH" ]; then
+            echo "[ERROR] Error: Could not find $SCRIPT_NAME.sh anywhere in apps/ folder!"
+            exit 1
+          fi
+          
+          echo "[OK] Found script at: $FOUND_PATH"
+          
+          # 3. Calculate relative path for VPS execution
+          # Remove "apps/" prefix because on VPS we will have /tmp/apps/
+          # Ex: "apps/infrastructure/docker.sh" -> "infrastructure/docker.sh"
+          RELATIVE_PATH=${FOUND_PATH#apps/}
+          
+          # Save to Environment Variable
+          echo "REMOTE_SCRIPT_PATH=$RELATIVE_PATH" >> $GITHUB_ENV
+
+      - name: Install SSH Tools
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Upload Entire App Library
+        run: |
+          echo "Uploading apps/ and lib/ folder structure to VPS..."
+          # Upload recursively (-r) the apps and lib folders to /tmp
+          # Folder structure is preserved on the server!
+          sshpass -p "${{ inputs.ssh_password }}" scp -o StrictHostKeyChecking=no -P ${{ inputs.ssh_port }} \
+            -r apps lib ${{ inputs.ssh_user }}@${{ inputs.vps_ip }}:/tmp/
+          
+          echo "[OK] Library uploaded."
+
+      - name: Execute Installer
+        run: |
+          echo "Executing: /tmp/apps/${{ env.REMOTE_SCRIPT_PATH }}"
+          
+          sshpass -p "${{ inputs.ssh_password }}" ssh -o StrictHostKeyChecking=no -p ${{ inputs.ssh_port }} \
+            ${{ inputs.ssh_user }}@${{ inputs.vps_ip }} "
+              # Make ALL scripts executable recursively
+              chmod -R +x /tmp/apps/ /tmp/lib/
+              
+              # Set sudo password
+              export SUDO_PASS='${{ inputs.ssh_password }}'
+              export WG_PASSWORD='${{ inputs.wg_password }}'
+              
+              # Execute the script using the dynamically found path
+              bash /tmp/apps/${{ env.REMOTE_SCRIPT_PATH }}
+              
+              # Cleanup - Remove the uploaded scripts to keep VPS clean
+              echo '[CLEANUP] Cleaning up installation scripts...'
+              rm -rf /tmp/apps /tmp/lib
+            "
