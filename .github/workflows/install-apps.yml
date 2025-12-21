@@ -19,6 +19,12 @@ on:
       wg_password:
         description: 'WireGuard Password (Optional)'
         required: false
+      domain:
+        description: 'Domain (Optional, for Web Apps)'
+        required: false
+      email:
+        description: 'Email (Optional, for SSL)'
+        required: false
       selection:
         description: 'Select Application'
         required: true
@@ -127,8 +133,17 @@ jobs:
               export SUDO_PASS='${{ inputs.ssh_password }}'
               export WG_PASSWORD='${{ inputs.wg_password }}'
               
+              # Construct Arguments
+              ARGS=""
+              if [ -n "${{ inputs.domain }}" ]; then
+                  ARGS="$ARGS --domain ${{ inputs.domain }}"
+              fi
+              if [ -n "${{ inputs.email }}" ]; then
+                  ARGS="$ARGS --email ${{ inputs.email }}"
+              fi
+              
               # Execute the script using the dynamically found path
-              bash /tmp/apps/${{ env.REMOTE_SCRIPT_PATH }}
+              bash /tmp/apps/${{ env.REMOTE_SCRIPT_PATH }} $ARGS
               
               # Cleanup - Remove the uploaded scripts to keep VPS clean
               echo '[CLEANUP] Cleaning up installation scripts...'

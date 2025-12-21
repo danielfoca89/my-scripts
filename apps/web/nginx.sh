@@ -38,8 +38,13 @@ fi
 
 if [ -n "$CONFIG_SRC" ]; then
     log_info "Applying standard configurations from $CONFIG_SRC..."
-    run_sudo cp "$CONFIG_SRC/security.conf" /etc/nginx/conf.d/99-security.conf
-    run_sudo cp "$CONFIG_SRC/general.conf" /etc/nginx/conf.d/99-general.conf
+    
+    # Create snippets directory if it doesn't exist
+    run_sudo mkdir -p /etc/nginx/snippets
+
+    # Copy configs to snippets instead of conf.d to avoid global conflicts
+    run_sudo cp "$CONFIG_SRC/security.conf" /etc/nginx/snippets/security.conf
+    run_sudo cp "$CONFIG_SRC/general.conf" /etc/nginx/snippets/general.conf
 else
     log_error "Standard Nginx configurations not found!"
 fi

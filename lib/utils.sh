@@ -202,3 +202,111 @@ require_docker() {
         fi
     fi
 }
+
+# --- 7. NGINX PROXY SETUP ---
+setup_nginx_proxy() {
+    local DOMAIN=$1
+    local PORT=$2
+    local EMAIL=$3
+    local CONTAINER_NAME=$4 # Optional: If provided, we try to get the container IP
+
+    log_info "Configuring Nginx Reverse Proxy for $DOMAIN..."
+
+    # Determine Upstream Target
+    local UPSTREAM_TARGET="127.0.0.1:$PORT"
+    
+    if [ -n "$CONTAINER_NAME" ]; then
+        # Try to get Docker Container IP
+        if command -v docker &> /dev/null; then
+            local CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME" 2>/dev/null)
+            if [ -n "$CONTAINER_IP" ]; then
+                log_info "Detected Docker Container IP for $CONTAINER_NAME: $CONTAINER_IP"
+                UPSTREAM_TARGET="$CONTAINER_IP:$PORT"
+            else
+                log_warn "Could not detect IP for container '$CONTAINER_NAME'. Falling back to 127.0.0.1"
+            fi
+        fi
+    fi
+
+    log_info "Upstream set to: $UPSTREAM_TARGET"
+
+    # Check if Nginx is installed
+    if ! command -v nginx &> /dev/null; then
+        log_error "Nginx is not installed. Please run apps/web/nginx.sh first."
+        return 1
+    fi
+
+    # Check if Certbot is installed
+    if ! command -v certbot &> /dev/null; then
+        log_warn "Certbot is not installed. Attempting to install..."
+        if [ -f "$SCRIPT_DIR/../../apps/web/certbot.sh" ]; then
+            bash "$SCRIPT_DIR/../../apps/web/certbot.sh"
+        elif [ -f "/tmp/apps/web/certbot.sh" ]; then
+            bash "/tmp/apps/web/certbot.sh"
+        else
+            log_error "Certbot installation script not found. Please install Certbot manually."
+            return 1
+        fi
+        
+        # Re-check
+        if ! command -v certbot &> /dev/null; then
+             log_error "Certbot installation failed."
+             return 1
+        fi
+    fi
+
+    # Locate Template
+    local TEMPLATE_PATH=""
+    if [ -f "$SCRIPT_DIR/../../lib/config/nginx/proxy_template.conf" ]; then
+        TEMPLATE_PATH="$SCRIPT_DIR/../../lib/config/nginx/proxy_template.conf"
+    elif [ -f "/tmp/lib/config/nginx/proxy_template.conf" ]; then
+        TEMPLATE_PATH="/tmp/lib/config/nginx/proxy_template.conf"
+    else
+        log_error "Nginx proxy template not found!"
+        return 1
+    fi
+
+    # Create Config
+    local CONFIG_FILE="/etc/nginx/sites-available/$DOMAIN"
+    
+    # Read template and replace variables
+    # We use sed to replace {{DOMAIN}} and {{UPSTREAM}}
+    local TEMP_CONFIG=$(mktemp)
+    
+    # Construct Upstream (IP:PORT)
+    # If UPSTREAM_TARGET is already set (either 127.0.0.1:PORT or CONTAINER_IP:PORT)
+    # We just use it directly.
+    
+    sed -e "s/{{DOMAIN}}/$DOMAIN/g" \
+        -e "s/{{UPSTREAM}}/$UPSTREAM_TARGET/g" \
+        "$TEMPLATE_PATH" > "$TEMP_CONFIG"
+
+    log_info "Installing Nginx configuration to $CONFIG_FILE..."
+    run_sudo mv "$TEMP_CONFIG" "$CONFIG_FILE"
+    
+    # Enable Site
+    if [ ! -L "/etc/nginx/sites-enabled/$DOMAIN" ]; then
+        run_sudo ln -s "$CONFIG_FILE" "/etc/nginx/sites-enabled/$DOMAIN"
+    fi
+
+    # Test Configuration
+    if run_sudo nginx -t; then
+        run_sudo systemctl reload nginx
+        log_info "Nginx configuration reloaded."
+    else
+        log_error "Nginx configuration test failed! Reverting..."
+        run_sudo rm "/etc/nginx/sites-enabled/$DOMAIN"
+        return 1
+    fi
+
+    # Obtain SSL Certificate
+    log_info "Obtaining SSL Certificate for $DOMAIN..."
+    if run_sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "$EMAIL" --redirect; then
+        log_info "SSL Certificate installed successfully!"
+        log_info "Your application is accessible at: https://$DOMAIN"
+    else
+        log_error "Certbot failed to obtain certificate. Please check your domain DNS settings."
+        log_warn "The site is available via HTTP at http://$DOMAIN"
+    fi
+}
+
