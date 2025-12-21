@@ -186,6 +186,57 @@ open_port() {
     fi
 }
 
+# --- 7. DEPENDENCY MANAGER (AUTO-HEALING) ---
+# Usage: require_dependency "docker/engine"
+# Usage: require_dependency "docker/postgres"
+require_dependency() {
+    local DEP_PATH="$1" # e.g., "docker/engine" or "host/nginx"
+    local SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../apps" && pwd)"
+    local INSTALL_SCRIPT="$SCRIPT_ROOT/$DEP_PATH/install.sh"
+
+    log_info "Checking dependency: $DEP_PATH..."
+
+    # 1. Check if already installed (Basic Checks)
+    case "$DEP_PATH" in
+        "docker/engine")
+            if command -v docker >/dev/null; then
+                log_info "Dependency '$DEP_PATH' is already satisfied."
+                return 0
+            fi
+            ;;
+        "docker/postgres")
+            if docker ps -a | grep -q "postgresql-server"; then
+                log_info "Dependency '$DEP_PATH' is already satisfied (Container running)."
+                return 0
+            fi
+            ;;
+        "docker/redis")
+            if docker ps -a | grep -q "redis-server"; then
+                log_info "Dependency '$DEP_PATH' is already satisfied (Container running)."
+                return 0
+            fi
+            ;;
+    esac
+
+    # 2. Install if missing
+    if [ -f "$INSTALL_SCRIPT" ]; then
+        log_warn "Dependency '$DEP_PATH' missing. Installing now..."
+        # Execute the dependency script
+        # We use bash explicitly and pass any current env vars
+        bash "$INSTALL_SCRIPT"
+        
+        if [ $? -eq 0 ]; then
+            log_success "Dependency '$DEP_PATH' installed successfully."
+        else
+            log_error "Failed to install dependency '$DEP_PATH'."
+            exit 1
+        fi
+    else
+        log_error "Dependency script not found at: $INSTALL_SCRIPT"
+        exit 1
+    fi
+}
+
 # --- 6. DOCKER CHECKER ---
 # Helper to ensure Docker is running before installing container apps
 require_docker() {

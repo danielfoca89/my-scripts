@@ -30,40 +30,27 @@ on:
         required: true
         type: choice
         options:
-          # --- INFRASTRUCTURE ---
-          - "Docker | docker"
-          - "NodeJS | nodejs"
-          - "Portainer | portainer"
-          - "Arcane | arcane"
+          # --- DOCKER APPS ---
+          - "Docker > Arcane | docker/arcane"
+          - "Docker > Engine | docker/engine"
+          - "Docker > Grafana | docker/grafana"
+          - "Docker > MariaDB | docker/mariadb"
+          - "Docker > MongoDB | docker/mongodb"
+          - "Docker > n8n Automation | docker/n8n"
+          - "Docker > Netdata | docker/netdata"
+          - "Docker > Portainer | docker/portainer"
+          - "Docker > PostgreSQL | docker/postgres"
+          - "Docker > Prometheus | docker/prometheus"
+          - "Docker > Redis | docker/redis"
+          - "Docker > Uptime Kuma | docker/uptime-kuma"
           
-          # --- WEB SERVERS ---
-          - "Nginx | nginx"
-          - "Certbot | certbot"
-          - "Uptime Kuma | uptime-kuma"
-          
-          # --- DATABASES ---
-          - "Redis | redis"
-          - "Postgres | postgresql"
-          - "MySQL | mysql"
-          - "MariaDB | mariadb"
-          - "MongoDB | mongodb"
-          
-          # --- AUTOMATION ---
-          - "n8n | n8n"
-          
-          # --- MONITORING ---
-          - "Netdata | netdata"
-          - "Prometheus | prometheus"
-          - "Grafana | grafana"
-          
-          # --- SECURITY ---
-          - "Wireguard | wireguard"
-          - "Security-audit | security-audit"
-          - "Restic | restic"
-          
-          # --- MAINTENANCE ---
-          - "Log-maintenance | log-maintenance"
-          - "Cockpit | cockpit"
+          # --- HOST APPS ---
+          - "Host > Certbot SSL | host/certbot"
+          - "Host > Log Maintenance | host/log-maintenance"
+          - "Host > Nginx Web Server | host/nginx"
+          - "Host > NodeJS Runtime | host/nodejs"
+          - "Host > Security Audit | host/security-audit"
+          - "Host > WireGuard VPN | host/wireguard"
 
 jobs:
   deploy-app:
@@ -79,21 +66,18 @@ jobs:
         run: |
           # 1. Extract script name from input (right side)
           # Ex: "Infrastructure | docker" -> "docker"
-          SCRIPT_NAME=$(echo "${{ inputs.selection }}" | awk -F ' \\| ' '{print $2}')
+          SCRIPT_KEY=$(echo "${{ inputs.selection }}" | awk -F ' \\| ' '{print $2}')
           
-          # --- DEPENDENCY CHECK / WARNINGS ---
-          if [ "$SCRIPT_NAME" == "n8n" ]; then
-             echo "::warning title=Dependency Check::n8n requires PostgreSQL to be installed FIRST. If you haven't installed 'Postgres | postgresql' yet, this installation might fail or be incomplete."
-          fi
+          echo "[SEARCH] Searching for install.sh for app: $SCRIPT_KEY..."
           
-          echo "[SEARCH] Searching for $SCRIPT_NAME.sh in apps/ directory..."
-          
-          # 2. Search recursively in apps/ folder
-          # -print -quit stops at the first result found
-          FOUND_PATH=$(find apps -name "$SCRIPT_NAME.sh" -print -quit)
+          # 2. Search recursively in apps/ folder for the specific app folder
+          # We look for a folder named exactly like the key, containing install.sh
+          # Ex: apps/docker/n8n/install.sh
+          FOUND_PATH=$(find apps -type f -path "*/$SCRIPT_KEY/install.sh" -print -quit)
           
           if [ -z "$FOUND_PATH" ]; then
-            echo "[ERROR] Error: Could not find $SCRIPT_NAME.sh anywhere in apps/ folder!"
+            echo "[ERROR] Error: Could not find install.sh for '$SCRIPT_KEY'!"
+            echo "Expected path pattern: apps/*/$SCRIPT_KEY/install.sh"
             exit 1
           fi
           
@@ -101,7 +85,7 @@ jobs:
           
           # 3. Calculate relative path for VPS execution
           # Remove "apps/" prefix because on VPS we will have /tmp/apps/
-          # Ex: "apps/infrastructure/docker.sh" -> "infrastructure/docker.sh"
+          # Ex: "apps/docker/n8n/install.sh" -> "docker/n8n/install.sh"
           RELATIVE_PATH=${FOUND_PATH#apps/}
           
           # Save to Environment Variable
