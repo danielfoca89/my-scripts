@@ -5,6 +5,12 @@
 ## 🚀 Quick Start
 
 ```bash
+# Colone the repository
+git clone https://github.com/danielfoca89/my-scripts.git
+
+# Go to repository
+cd ./my-scripts
+
 # Run the interactive orchestrator
 ./orchestrator.sh
 ```
