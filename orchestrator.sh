@@ -77,27 +77,28 @@ install_dependencies() {
         if ! is_app_installed "$dep"; then
             log_warn "Dependency not installed: $dep"
             log_info "Application '$app_name' requires '$dep'"
+            log_info "Installing dependency automatically: $dep"
+            echo ""
             
-            if confirm_action "Install $dep now?"; then
-                log_info "Installing dependency: $dep"
+            # Find and run dependency installer
+            dep_script=$(find "${SCRIPT_DIR}/apps" -name "$dep" -type d -exec test -f "{}/install.sh" \; -print -quit)
+            
+            if [ -n "$dep_script" ]; then
+                # Install dependency
+                bash "${dep_script}/install.sh"
                 
-                # Find and run dependency installer
-                dep_script=$(find "${SCRIPT_DIR}/apps" -name "$dep" -type d -exec test -f "{}/install.sh" \; -print -quit)
-                
-                if [ -n "$dep_script" ]; then
-                    bash "${dep_script}/install.sh"
-                    
-                    if ! is_app_installed "$dep"; then
-                        log_error "Failed to install dependency: $dep"
-                        return 1
-                    fi
-                    log_success "Dependency installed: $dep"
-                else
-                    log_error "Cannot find installer for: $dep"
+                # Verify installation
+                if ! is_app_installed "$dep"; then
+                    log_error "Failed to install dependency: $dep"
+                    log_error "Please install $dep manually and try again"
                     return 1
                 fi
+                
+                log_success "Dependency installed successfully: $dep"
+                echo ""
             else
-                log_error "Cannot proceed without dependency: $dep"
+                log_error "Cannot find installer for: $dep"
+                log_error "Expected location: apps/*/$dep/install.sh"
                 return 1
             fi
         else
