@@ -5,6 +5,8 @@
 # Provides validation functions for user input
 # ==============================================================================
 
+set -euo pipefail
+
 # Validate port number
 # Args: $1 = port number
 validate_port() {

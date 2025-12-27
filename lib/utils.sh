@@ -5,6 +5,8 @@
 # Common functions for logging, sudo handling, OS detection, and system operations
 # ==============================================================================
 
+set -euo pipefail
+
 # --- COLORS FOR LOGGING ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'

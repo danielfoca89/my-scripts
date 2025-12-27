@@ -5,6 +5,8 @@
 # Provides hierarchical navigation with breadcrumbs and user-friendly interface
 # ==============================================================================
 
+set -euo pipefail
+
 # Navigation state
 declare -a MENU_STACK=()
 CURRENT_CATEGORY=""
@@ -12,19 +14,9 @@ CURRENT_CATEGORY=""
 # Print ASCII banner
 print_banner() {
     cat << 'EOF'
-╔═══════════════════════════════════════════════════════════════╗
-║                                                               ║
-║        ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗         ║
-║        ██║   ██║██╔══██╗██╔════╝    ██╔═══██╗██╔══██╗        ║
-║        ██║   ██║██████╔╝███████╗    ██║   ██║██████╔╝        ║
-║        ╚██╗ ██╔╝██╔═══╝ ╚════██║    ██║   ██║██╔══██╗        ║
-║         ╚████╔╝ ██║     ███████║    ╚██████╔╝██║  ██║        ║
-║          ╚═══╝  ╚═╝     ╚══════╝     ╚═════╝ ╚═╝  ╚═╝        ║
-║                                                               ║
-║              VPS Application Orchestrator v2.0               ║
-║                  Professional Setup System                   ║
-║                                                               ║
-╚═══════════════════════════════════════════════════════════════╝
+╔═════════════════════════════════════════════════════════════╗
+║           VPS ORCHESTRATOR v2.0 - Professional Setup       ║
+╚═════════════════════════════════════════════════════════════╝
 EOF
 }
 
@@ -39,7 +31,7 @@ print_breadcrumb() {
     fi
     
     echo ""
-    echo "${BLUE}📍 ${breadcrumb}${NC}"
+    echo "${BLUE}> ${breadcrumb}${NC}"
     echo ""
 }
 
@@ -54,21 +46,21 @@ show_header() {
 show_main_menu() {
     show_header
     
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
-    echo "${GREEN}  Select Category${NC}"
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
+    echo "${GREEN}═════════════════════════════════════════════════════════════${NC}"
+    echo "${GREEN}                      SELECT CATEGORY${NC}"
+    echo "${GREEN}═════════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo "  ${BLUE}[1]${NC} 🗄️  Databases          - PostgreSQL, MariaDB, MongoDB, Redis"
-    echo "  ${BLUE}[2]${NC} ⚙️  Automation         - n8n"
-    echo "  ${BLUE}[3]${NC} 📊 Monitoring         - Grafana, Prometheus, Netdata"
-    echo "  ${BLUE}[4]${NC} 🏗️  Infrastructure     - Docker, Portainer, Nginx, Certbot, Arcane"
-    echo "  ${BLUE}[5]${NC} 🔒 Security           - WireGuard VPN, Security Audit"
-    echo "  ${BLUE}[6]${NC} 🖥️  System             - VPS Setup, NodeJS, Log Maintenance"
+    echo "  ${BLUE}[1]${NC} Databases       - PostgreSQL, MariaDB, MongoDB, Redis"
+    echo "  ${BLUE}[2]${NC} Automation      - n8n"
+    echo "  ${BLUE}[3]${NC} Monitoring      - Grafana, Prometheus, Netdata, Uptime Kuma"
+    echo "  ${BLUE}[4]${NC} Infrastructure  - Docker, Portainer, Nginx, Certbot, Arcane"
+    echo "  ${BLUE}[5]${NC} Security        - WireGuard VPN, Fail2ban, Security Audit"
+    echo "  ${BLUE}[6]${NC} System          - VPS Setup, Node.js, Log Maintenance"
     echo ""
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
-    echo "  ${BLUE}[7]${NC} 🔧 Manage Secrets      - View, backup, regenerate credentials"
-    echo "  ${BLUE}[8]${NC} ℹ️  About & Help       - Documentation and support"
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
+    echo "${GREEN}─────────────────────────────────────────────────────────────${NC}"
+    echo "  ${BLUE}[7]${NC} Manage Secrets"
+    echo "  ${BLUE}[8]${NC} Help & About"
+    echo "${GREEN}═════════════════════════════════════════════════════════════${NC}"
     echo ""
     echo "  ${YELLOW}[0]${NC} Exit"
     echo ""
@@ -87,34 +79,28 @@ show_category_menu() {
     
     case "$category" in
         databases)
-            category_icon="🗄️"
-            category_title="Databases"
+            category_title="DATABASES"
             ;;
         automation)
-            category_icon="⚙️"
-            category_title="Automation"
+            category_title="AUTOMATION"
             ;;
         monitoring)
-            category_icon="📊"
-            category_title="Monitoring"
+            category_title="MONITORING"
             ;;
         infrastructure)
-            category_icon="🏗️"
-            category_title="Infrastructure"
+            category_title="INFRASTRUCTURE"
             ;;
         security)
-            category_icon="🔒"
-            category_title="Security"
+            category_title="SECURITY"
             ;;
         system)
-            category_icon="🖥️"
-            category_title="System"
+            category_title="SYSTEM"
             ;;
     esac
     
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
-    echo "${GREEN}  ${category_icon} ${category_title} Applications${NC}"
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
+    echo "${GREEN}═════════════════════════════════════════════════════════════${NC}"
+    echo "${GREEN}                      ${category_title}${NC}"
+    echo "${GREEN}═════════════════════════════════════════════════════════════${NC}"
     echo ""
     
     # Read applications from config file
@@ -133,7 +119,7 @@ show_category_menu() {
                 # Check if already installed
                 local status_indicator=""
                 if has_credentials "$app_name"; then
-                    status_indicator="${GREEN}[✓]${NC}"
+                    status_indicator="${GREEN}[+]${NC}"
                 else
                     status_indicator="   "
                 fi
@@ -148,9 +134,8 @@ show_category_menu() {
     fi
     
     echo ""
-    echo "${GREEN}═══════════════════════════════════════════${NC}"
-    echo "  ${YELLOW}[b]${NC} Back to Main Menu"
-    echo "  ${YELLOW}[0]${NC} Exit"
+    echo "${GREEN}═════════════════════════════════════════════════════════════${NC}"
+    echo "  ${YELLOW}[b]${NC} Back    ${YELLOW}[0]${NC} Exit"
     echo ""
 }
 
@@ -212,7 +197,7 @@ show_help_menu() {
     show_header
     
     echo "${GREEN}═══════════════════════════════════════════${NC}"
-    echo "${GREEN}  ℹ️  Help & Documentation${NC}"
+    echo "${GREEN}  Help & Documentation${NC}"
     echo "${GREEN}═══════════════════════════════════════════${NC}"
     echo ""
     echo "  ${BLUE}Version:${NC} 2.0.0"
@@ -226,11 +211,11 @@ show_help_menu() {
     echo "  4. Credentials are auto-generated and stored in ~/.vps-secrets/"
     echo ""
     echo "${YELLOW}Features:${NC}"
-    echo "  ✓ Automatic credential generation"
-    echo "  ✓ Secure secret storage"
-    echo "  ✓ Docker-based deployments"
-    echo "  ✓ Dependency management"
-    echo "  ✓ Health checks and validation"
+    echo "  + Automatic credential generation"
+    echo "  + Secure secret storage"
+    echo "  + Docker-based deployments"
+    echo "  + Dependency management"
+    echo "  + Health checks and validation"
     echo ""
     echo "${YELLOW}Documentation:${NC}"
     echo "  • Usage Guide:    docs/USAGE.md"
@@ -259,7 +244,7 @@ prompt_selection() {
         echo "$choice"
         return 0
     else
-        log_error "Invalid option: $choice"
+        echo "${RED}[X] Invalid option: $choice${NC}" >&2
         sleep 1
         return 1
     fi
@@ -308,7 +293,7 @@ show_success() {
     echo ""
     echo "${GREEN}╔═══════════════════════════════════════════╗${NC}"
     echo "${GREEN}║                                           ║${NC}"
-    echo "${GREEN}║  ✓ Installation Successful!               ║${NC}"
+    echo "${GREEN}║  [OK] Installation Successful!             ║${NC}"
     echo "${GREEN}║                                           ║${NC}"
     echo "${GREEN}╚═══════════════════════════════════════════╝${NC}"
     echo ""
@@ -325,7 +310,7 @@ show_error() {
     echo ""
     echo "${RED}╔═══════════════════════════════════════════╗${NC}"
     echo "${RED}║                                           ║${NC}"
-    echo "${RED}║  ✗ Installation Failed!                   ║${NC}"
+    echo "${RED}║  [FAIL] Installation Failed!               ║${NC}"
     echo "${RED}║                                           ║${NC}"
     echo "${RED}╚═══════════════════════════════════════════╝${NC}"
     echo ""

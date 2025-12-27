@@ -5,6 +5,8 @@
 # Provides Docker-specific functionality for container management
 # ==============================================================================
 
+set -euo pipefail
+
 # Check if Docker is installed and running
 check_docker() {
     if ! command -v docker &> /dev/null; then

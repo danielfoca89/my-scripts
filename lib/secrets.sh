@@ -5,6 +5,8 @@
 # Manages secure storage, generation, and retrieval of application credentials
 # ==============================================================================
 
+set -euo pipefail
+
 readonly SECRETS_DIR="${HOME}/.vps-secrets"
 readonly BACKUP_DIR="${SECRETS_DIR}/.backup"
 readonly INDEX_FILE="${SECRETS_DIR}/.secrets_index.json"
