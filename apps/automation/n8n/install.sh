@@ -36,7 +36,7 @@ log_success "Docker is available"
 
 # PostgreSQL check (REQUIRED)
 POSTGRES_AVAILABLE=false
-if docker ps --format '{{.Names}}' | grep -q "^postgres$"; then
+if run_sudo docker ps --format '{{.Names}}' | grep -q "^postgres$"; then
     POSTGRES_AVAILABLE=true
     log_success "PostgreSQL detected"
 else
@@ -47,7 +47,7 @@ else
 fi
 
 # Nginx check (REQUIRED for SSL)
-if ! systemctl is-active --quiet nginx 2>/dev/null; then
+if ! run_sudo systemctl is-active --quiet nginx 2>/dev/null; then
     log_error "Nginx is not installed"
     log_info "Nginx is REQUIRED for SSL certificate and reverse proxy"
     log_info "Please install Nginx first: Infrastructure > Nginx"
@@ -66,12 +66,12 @@ log_success "Certbot is available"
 echo ""
 
 # Check for existing installation
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_warn "n8n is already installed"
     if confirm_action "Reinstall?"; then
         log_info "Removing existing installation..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
     else
         log_info "Installation cancelled"
         exit 0
@@ -166,15 +166,15 @@ N8N_DB_PASSWORD=$(generate_secure_password)
 log_info "Creating database: $N8N_DB_NAME"
 
 # Create database
-docker exec postgres psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$N8N_DB_NAME'" | grep -q 1 || \
-    docker exec postgres psql -U postgres -c "CREATE DATABASE $N8N_DB_NAME;"
+run_sudo docker exec postgres psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$N8N_DB_NAME'" | grep -q 1 || \
+    run_sudo docker exec postgres psql -U postgres -c "CREATE DATABASE $N8N_DB_NAME;"
 
 # Create user
-docker exec postgres psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = '$N8N_DB_USER'" | grep -q 1 || \
-    docker exec postgres psql -U postgres -c "CREATE USER $N8N_DB_USER WITH ENCRYPTED PASSWORD '$N8N_DB_PASSWORD';"
+run_sudo docker exec postgres psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = '$N8N_DB_USER'" | grep -q 1 || \
+    run_sudo docker exec postgres psql -U postgres -c "CREATE USER $N8N_DB_USER WITH ENCRYPTED PASSWORD '$N8N_DB_PASSWORD';"
 
 # Grant privileges
-docker exec postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE $N8N_DB_NAME TO $N8N_DB_USER;"
+run_sudo docker exec postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE $N8N_DB_NAME TO $N8N_DB_USER;"
 
 # Save database credentials
 save_secret "$APP_NAME" "DB_NAME" "$N8N_DB_NAME"
@@ -276,14 +276,14 @@ log_step "Step 9: Waiting for n8n to be ready"
 RETRIES=60
 COUNT=0
 while [ $COUNT -lt $RETRIES ]; do
-    if docker exec $CONTAINER_NAME wget --no-verbose --tries=1 --spider http://localhost:5678/healthz 2>/dev/null; then
+    if run_sudo docker exec $CONTAINER_NAME wget --no-verbose --tries=1 --spider http://localhost:5678/healthz 2>/dev/null; then
         log_success "n8n is ready!"
         break
     fi
     COUNT=$((COUNT + 1))
     if [ $COUNT -eq $RETRIES ]; then
         log_error "n8n failed to become ready"
-        docker logs $CONTAINER_NAME --tail 50
+        run_sudo docker logs $CONTAINER_NAME --tail 50
         exit 1
     fi
     sleep 2
@@ -361,19 +361,19 @@ server {
 EOF_NGINX
 
 # Replace domain placeholder
-sed -i "s/N8N_DOMAIN_PLACEHOLDER/$N8N_DOMAIN/g" "/etc/nginx/sites-available/$APP_NAME.conf"
+run_sudo sed -i "s/N8N_DOMAIN_PLACEHOLDER/$N8N_DOMAIN/g" "/etc/nginx/sites-available/$APP_NAME.conf"
 
 # Enable site
-ln -sf "/etc/nginx/sites-available/$APP_NAME.conf" "/etc/nginx/sites-enabled/$APP_NAME.conf"
+run_sudo ln -sf "/etc/nginx/sites-available/$APP_NAME.conf" "/etc/nginx/sites-enabled/$APP_NAME.conf"
 
 # Test Nginx configuration
-if nginx -t 2>&1 | grep -q "syntax is ok"; then
+if run_sudo nginx -t 2>&1 | grep -q "syntax is ok"; then
     log_success "Nginx configuration is valid"
-    systemctl reload nginx
+    run_sudo systemctl reload nginx
     log_success "Nginx reloaded"
 else
     log_error "Nginx configuration test failed"
-    nginx -t
+    run_sudo nginx -t
     exit 1
 fi
 echo ""
@@ -389,7 +389,7 @@ log_info "Press Enter when DNS is configured, or Ctrl+C to cancel"
 read -p "" DUMMY
 
 # Request certificate
-if certbot --nginx -d "$N8N_DOMAIN" \
+if run_sudo certbot --nginx -d "$N8N_DOMAIN" \
     --email "$N8N_EMAIL" \
     --agree-tos \
     --no-eff-email \
@@ -398,7 +398,7 @@ if certbot --nginx -d "$N8N_DOMAIN" \
     log_success "SSL certificate installed successfully"
 else
     log_error "Failed to obtain SSL certificate"
-    log_info "You can manually run: certbot --nginx -d $N8N_DOMAIN"
+    log_info "You can manually run: sudo certbot --nginx -d $N8N_DOMAIN"
     log_warn "n8n is running but only accessible via HTTP for now"
 fi
 echo ""

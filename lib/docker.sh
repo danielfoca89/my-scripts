@@ -13,7 +13,7 @@ check_docker() {
         return 1
     fi
     
-    if ! docker info &> /dev/null; then
+    if ! run_sudo docker info &> /dev/null; then
         log_warn "Docker is installed but not running"
         return 2
     fi
@@ -23,7 +23,7 @@ check_docker() {
 
 # Check if Docker Compose is available
 check_docker_compose() {
-    if docker compose version &> /dev/null; then
+    if run_sudo docker compose version &> /dev/null; then
         echo "docker compose"
         return 0
     elif command -v docker-compose &> /dev/null; then
@@ -39,7 +39,7 @@ check_docker_compose() {
 create_docker_network() {
     local network_name=$1
     
-    if ! docker network inspect "$network_name" &> /dev/null; then
+    if ! run_sudo docker network inspect "$network_name" &> /dev/null; then
         log_info "Creating Docker network: $network_name"
         run_sudo docker network create "$network_name"
         return $?
@@ -91,7 +91,7 @@ deploy_with_compose() {
 remove_container() {
     local container_name=$1
     
-    if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
+    if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
         log_info "Removing container: $container_name"
         run_sudo docker stop "$container_name" 2>/dev/null
         run_sudo docker rm "$container_name" 2>/dev/null
@@ -115,13 +115,13 @@ check_container_health() {
     sleep 2
     
     while [ $attempt -lt $max_attempts ]; do
-        if ! docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        if ! run_sudo docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
             log_warn "Container not running: $container_name"
             return 1
         fi
         
         # Check if container has health check defined
-        local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null)
+        local health_status=$(run_sudo docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null)
         
         if [ -n "$health_status" ]; then
             # Container has health check
@@ -135,7 +135,7 @@ check_container_health() {
             # Status is "starting", continue waiting
         else
             # No health check defined, just check if running
-            local is_running=$(docker inspect --format='{{.State.Running}}' "$container_name" 2>/dev/null)
+            local is_running=$(run_sudo docker inspect --format='{{.State.Running}}' "$container_name" 2>/dev/null)
             if [ "$is_running" = "true" ]; then
                 log_success "Container is running: $container_name"
                 return 0

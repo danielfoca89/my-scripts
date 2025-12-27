@@ -30,7 +30,7 @@ log_success "Docker is available"
 echo ""
 
 # Check if already installed
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_warn "MongoDB container already exists"
     
     if has_credentials "$APP_NAME"; then
@@ -38,8 +38,8 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         
         if confirm_action "Do you want to reinstall MongoDB?"; then
             log_info "Stopping and removing existing container..."
-            docker stop "$CONTAINER_NAME" 2>/dev/null || true
-            docker rm "$CONTAINER_NAME" 2>/dev/null || true
+            run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+            run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
         else
             log_info "Installation cancelled"
             exit 0
@@ -83,7 +83,7 @@ echo ""
 log_step "Step 4: Deploying MongoDB container"
 log_info "Starting MongoDB 7..."
 
-docker run -d \
+run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network vps_network \
@@ -104,7 +104,7 @@ log_info "This may take 30-60 seconds..."
 MAX_ATTEMPTS=60
 ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    if docker exec "$CONTAINER_NAME" mongosh --eval "db.adminCommand('ping')" --quiet &>/dev/null; then
+    if run_sudo docker exec "$CONTAINER_NAME" mongosh --eval "db.adminCommand('ping')" --quiet &>/dev/null; then
         log_success "MongoDB is ready!"
         break
     fi
@@ -123,7 +123,7 @@ echo ""
 
 # Create application user
 log_step "Step 6: Creating application user"
-docker exec "$CONTAINER_NAME" mongosh admin \
+run_sudo docker exec "$CONTAINER_NAME" mongosh admin \
     --username "$MONGO_INITDB_ROOT_USERNAME" \
     --password "$MONGO_INITDB_ROOT_PASSWORD" \
     --eval "

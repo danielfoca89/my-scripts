@@ -35,12 +35,12 @@ log_success "Docker is available"
 echo ""
 
 # Check for existing installation
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_warn "Arcane is already installed"
     if confirm_action "Reinstall?"; then
         log_info "Removing existing installation..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
     else
         log_info "Installation cancelled"
         exit 0
@@ -95,7 +95,7 @@ echo ""
 log_step "Step 6: Deploying Arcane container"
 log_info "Pulling Arcane Docker Management image..."
 
-docker run -d \
+run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network "$NETWORK" \

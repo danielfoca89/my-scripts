@@ -20,11 +20,11 @@ echo ""
 # Check if already installed
 if check_docker; then
     log_success "Docker is already installed"
-    docker --version
+    run_sudo docker --version
     
     if check_docker_compose &> /dev/null; then
         log_success "Docker Compose is already installed"
-        docker compose version 2>/dev/null || docker-compose --version
+        run_sudo docker compose version 2>/dev/null || run_sudo docker-compose --version
     fi
     
     echo ""
@@ -79,12 +79,12 @@ fi
 
 log_step "Step 6: Verifying installation"
 sleep 2
-docker --version
-docker compose version
+run_sudo docker --version
+run_sudo docker compose version
 
 # Test Docker
 log_info "Testing Docker..."
-if docker run --rm hello-world > /dev/null 2>&1; then
+if run_sudo docker run --rm hello-world > /dev/null 2>&1; then
     log_success "Docker test successful!"
 else
     log_error "Docker test failed"
@@ -119,10 +119,10 @@ log_success "  Docker Engine installed successfully!"
 log_success "═══════════════════════════════════════════"
 echo ""
 log_info "Docker Version:"
-docker --version
+run_sudo docker --version
 echo ""
 log_info "Docker Compose Version:"
-docker compose version 2>/dev/null || docker-compose --version
+run_sudo docker compose version 2>/dev/null || run_sudo docker-compose --version
 echo ""
 log_info "Default Network: vps_network"
 echo ""

@@ -5,6 +5,12 @@
 # Provides universal functions that work across Ubuntu, Debian, AlmaLinux, etc.
 # ==============================================================================
 
+# Source utils for run_sudo function
+SCRIPT_DIR_OS_DETECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR_OS_DETECT}/utils.sh" ]; then
+    source "${SCRIPT_DIR_OS_DETECT}/utils.sh"
+fi
+
 # Global variables for OS detection
 OS_ID=""
 OS_VERSION=""
@@ -83,16 +89,16 @@ pkg_update() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            DEBIAN_FRONTEND=noninteractive apt-get update -qq
+            run_sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
             ;;
         dnf|yum)
-            $PACKAGE_MANAGER makecache -q
+            run_sudo $PACKAGE_MANAGER makecache -q
             ;;
         pacman)
-            pacman -Sy --noconfirm
+            run_sudo pacman -Sy --noconfirm
             ;;
         zypper)
-            zypper refresh -q
+            run_sudo zypper refresh -q
             ;;
     esac
 }
@@ -104,16 +110,16 @@ pkg_install() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages
+            run_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages
             ;;
         dnf|yum)
-            $PACKAGE_MANAGER install -y -q $packages
+            run_sudo $PACKAGE_MANAGER install -y -q $packages
             ;;
         pacman)
-            pacman -S --noconfirm $packages
+            run_sudo pacman -S --noconfirm $packages
             ;;
         zypper)
-            zypper install -y $packages
+            run_sudo zypper install -y $packages
             ;;
     esac
 }
@@ -125,16 +131,16 @@ pkg_remove() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq $packages
+            run_sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq $packages
             ;;
         dnf|yum)
-            $PACKAGE_MANAGER remove -y -q $packages
+            run_sudo $PACKAGE_MANAGER remove -y -q $packages
             ;;
         pacman)
-            pacman -R --noconfirm $packages
+            run_sudo pacman -R --noconfirm $packages
             ;;
         zypper)
-            zypper remove -y $packages
+            run_sudo zypper remove -y $packages
             ;;
     esac
 }
@@ -215,37 +221,37 @@ get_firewall_service() {
 # Start service
 service_start() {
     local service_name="$1"
-    systemctl start "$service_name"
+    run_sudo systemctl start "$service_name"
 }
 
 # Stop service
 service_stop() {
     local service_name="$1"
-    systemctl stop "$service_name"
+    run_sudo systemctl stop "$service_name"
 }
 
 # Restart service
 service_restart() {
     local service_name="$1"
-    systemctl restart "$service_name"
+    run_sudo systemctl restart "$service_name"
 }
 
 # Enable service on boot
 service_enable() {
     local service_name="$1"
-    systemctl enable "$service_name"
+    run_sudo systemctl enable "$service_name"
 }
 
 # Check if service is active
 service_is_active() {
     local service_name="$1"
-    systemctl is-active --quiet "$service_name"
+    run_sudo systemctl is-active --quiet "$service_name"
 }
 
 # Check if service exists
 service_exists() {
     local service_name="$1"
-    systemctl list-unit-files | grep -q "^${service_name}.service"
+    run_sudo systemctl list-unit-files | grep -q "^${service_name}.service"
 }
 
 # ==============================================================================

@@ -60,7 +60,7 @@ log_step "Step 4: Creating data directories"
 create_app_directory "$DATA_DIR/data" 755
 
 # Remove existing container if present
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_info "Removing existing container..."
     remove_container "$CONTAINER_NAME"
 fi

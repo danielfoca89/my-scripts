@@ -26,12 +26,12 @@ fi
 log_success "Docker is available"
 echo ""
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_warn "Portainer container already exists"
     if confirm_action "Do you want to reinstall Portainer?"; then
         log_info "Stopping and removing existing container..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
     else
         log_info "Installation cancelled"
         exit 0
@@ -50,7 +50,7 @@ echo ""
 log_step "Step 4: Deploying Portainer container"
 log_info "Starting Portainer CE..."
 
-docker run -d \
+run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network vps_network \
