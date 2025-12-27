@@ -180,9 +180,9 @@ install_security_tools() {
     
     # Add distro-specific packages
     if is_debian_based; then
-        packages="$packages ufw fail2ban auditd chrony unattended-upgrades apt-listchanges net-tools libpam-tmpdir"
+        packages="$packages sudo ufw fail2ban auditd chrony unattended-upgrades apt-listchanges net-tools libpam-tmpdir"
     elif is_rhel_based; then
-        packages="$packages firewalld fail2ban audit chrony dnf-automatic net-tools"
+        packages="$packages sudo firewalld fail2ban audit chrony dnf-automatic net-tools"
     fi
     
     log_info "Installing: $packages"
@@ -195,15 +195,25 @@ install_security_tools() {
 create_admin_user() {
     log_step "Step 3: Setting Up Admin User"
     
+    # Determine sudo group based on OS
+    local SUDO_GROUP
+    if is_debian_based; then
+        SUDO_GROUP="sudo"
+    elif is_rhel_based; then
+        SUDO_GROUP="wheel"
+    else
+        SUDO_GROUP="sudo"
+    fi
+    
     if ! id "$NEW_USER" &>/dev/null; then
         run_sudo useradd -m -s /bin/bash "$NEW_USER"
         echo "${NEW_USER}:${NEW_PASSWORD}" | run_sudo chpasswd
-        run_sudo usermod -aG sudo "$NEW_USER"
-        log_success "User $NEW_USER created"
+        run_sudo usermod -aG "$SUDO_GROUP" "$NEW_USER"
+        log_success "User $NEW_USER created and added to $SUDO_GROUP group"
     else
         echo "${NEW_USER}:${NEW_PASSWORD}" | run_sudo chpasswd
-        run_sudo usermod -aG sudo "$NEW_USER"
-        log_success "User $NEW_USER updated"
+        run_sudo usermod -aG "$SUDO_GROUP" "$NEW_USER"
+        log_success "User $NEW_USER updated and added to $SUDO_GROUP group"
     fi
     
     # Setup SSH directory

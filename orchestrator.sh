@@ -139,11 +139,11 @@ for category in apps/*/; do
             app_name=$(basename "$app_dir")
             apps_list+=("${category_name}/${app_name}")
             
-            # Show if installed
-            if is_app_installed "$app_name"; then
-                printf "  %2d) %s ✓\n" "$counter" "$app_name"
+            # Show if installed (disable exit on error for this check)
+            if is_app_installed "$app_name" 2>/dev/null; then
+                printf "   %2d) %-25s [✓ Installed]\n" "$counter" "$app_name"
             else
-                printf "  %2d) %s\n" "$counter" "$app_name"
+                printf "   %2d) %s\n" "$counter" "$app_name"
             fi
             ((counter++))
         fi
