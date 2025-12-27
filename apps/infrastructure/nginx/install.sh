@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
+source "${SCRIPT_DIR}/lib/os-detect.sh"
 
 APP_NAME="nginx"
 CONF_DIR="/etc/nginx"
@@ -42,19 +43,8 @@ echo ""
 
 # Install Nginx
 log_step "Step 2: Installing Nginx"
-case "$PACKAGE_MANAGER" in
-    apt)
-        run_sudo apt-get update -qq
-        run_sudo apt-get install -y nginx
-        ;;
-    yum|dnf)
-        run_sudo $PACKAGE_MANAGER install -y nginx
-        ;;
-    *)
-        log_error "Unsupported package manager: $PACKAGE_MANAGER"
-        exit 1
-        ;;
-esac
+pkg_update
+pkg_install nginx
 log_success "Nginx installed"
 echo ""
 

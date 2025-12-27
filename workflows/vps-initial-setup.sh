@@ -2,11 +2,22 @@
 
 # ==============================================================================
 # VPS INITIAL SETUP & HARDENING
-# Enterprise-grade VPS configuration and security hardening
+# Universal VPS configuration for Ubuntu, Debian, AlmaLinux, etc.
 # Run this LOCALLY on the VPS (not via SSH)
 # ==============================================================================
 
 set -euo pipefail
+
+# Determine script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Load OS detection library
+if [ -f "${SCRIPT_DIR}/lib/os-detect.sh" ]; then
+    source "${SCRIPT_DIR}/lib/os-detect.sh"
+else
+    echo "ERROR: OS detection library not found!"
+    exit 1
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -33,6 +44,8 @@ print_banner() {
 ╚═══════════════════════════════════════════════════════════════╝
 EOF
     echo ""
+    log_info "Detected OS: $(get_os_info)"
+    echo ""
 }
 
 # Gather user input
@@ -42,7 +55,7 @@ gather_information() {
     
     # New username
     while true; do
-        echo -n "${YELLOW}Enter new admin username:${NC} "
+        echo -ne "${YELLOW}Enter new admin username:${NC} "
         read -r NEW_USER
         
         if [ -z "$NEW_USER" ]; then
@@ -57,7 +70,7 @@ gather_information() {
         
         if id "$NEW_USER" &>/dev/null; then
             log_warn "User $NEW_USER already exists"
-            echo -n "${YELLOW}Use existing user? (y/n):${NC} "
+            echo -ne "${YELLOW}Use existing user? (y/n):${NC} "
             read -r choice
             if [[ "$choice" =~ ^[Yy]$ ]]; then
                 break
@@ -70,7 +83,7 @@ gather_information() {
     
     # New password
     while true; do
-        echo -n "${YELLOW}Enter password for $NEW_USER:${NC} "
+        echo -ne "${YELLOW}Enter password for $NEW_USER:${NC} "
         read -s NEW_PASSWORD
         echo ""
         
@@ -79,7 +92,7 @@ gather_information() {
             continue
         fi
         
-        echo -n "${YELLOW}Confirm password:${NC} "
+        echo -ne "${YELLOW}Confirm password:${NC} "
         read -s PASSWORD_CONFIRM
         echo ""
         
@@ -93,7 +106,7 @@ gather_information() {
     
     # SSH port
     while true; do
-        echo -n "${YELLOW}Enter new SSH port [2222]:${NC} "
+        echo -ne "${YELLOW}Enter new SSH port [2222]:${NC} "
         read -r SSH_PORT
         SSH_PORT=${SSH_PORT:-2222}
         
@@ -111,7 +124,7 @@ gather_information() {
     echo "  SSH Port: $SSH_PORT"
     echo ""
     
-    echo -n "${YELLOW}Proceed with setup? (yes/no):${NC} "
+    echo -ne "${YELLOW}Proceed with setup? (yes/no):${NC} "
     read -r confirm
     if [[ "$confirm" != "yes" ]]; then
         log_info "Setup cancelled"
@@ -123,15 +136,25 @@ gather_information() {
 system_update() {
     log_step "Step 1: System Update"
     
-    # Wait for apt locks
-    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-        log_info "Waiting for other package managers to finish..."
-        sleep 5
-    done
+    if is_debian_based; then
+        # Wait for apt locks
+        while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+            log_info "Waiting for other package managers to finish..."
+            sleep 5
+        done
+    fi
     
-    apt-get update -y
-    apt-get upgrade -y
-    apt-get autoremove -y
+    log_info "Updating package index..."
+    pkg_update
+    
+    log_info "Upgrading packages..."
+    if is_debian_based; then
+        DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+        apt-get autoremove -y
+    elif is_rhel_based; then
+        dnf upgrade -y || yum upgrade -y
+        dnf autoremove -y || yum autoremove -y
+    fi
     
     log_success "System updated"
 }
@@ -140,20 +163,20 @@ system_update() {
 install_security_tools() {
     log_step "Step 2: Installing Security Tools"
     
-    apt-get install -y \
-        ufw \
-        fail2ban \
-        auditd \
-        chrony \
-        unattended-upgrades \
-        apt-listchanges \
-        curl \
-        wget \
-        git \
-        htop \
-        vim \
-        net-tools \
-        libpam-tmpdir
+    local packages=""
+    
+    # Common packages for all distros
+    packages="curl wget git htop vim"
+    
+    # Add distro-specific packages
+    if is_debian_based; then
+        packages="$packages ufw fail2ban auditd chrony unattended-upgrades apt-listchanges net-tools libpam-tmpdir"
+    elif is_rhel_based; then
+        packages="$packages firewalld fail2ban audit chrony dnf-automatic net-tools"
+    fi
+    
+    log_info "Installing: $packages"
+    pkg_install $packages
     
     log_success "Security tools installed"
 }
@@ -284,19 +307,26 @@ AllowUsers $NEW_USER
 EOF
     
     # Test SSH configuration
-    if ! sshd -t; then
+    if ! sshd -t 2>/dev/null; then
         log_error "SSH configuration is invalid!"
         log_error "Restoring backup..."
         mv /etc/ssh/sshd_config.backup_$(ls -t /etc/ssh/sshd_config.backup_* | head -1 | cut -d'_' -f2-) /etc/ssh/sshd_config
         exit 1
     fi
     
-    # Restart SSH service
-    log_info "Restarting SSH service..."
-    systemctl restart sshd || systemctl restart ssh
+    # Get SSH service name for this OS
+    SSH_SERVICE=$(get_ssh_service_name)
     
-    if ! systemctl is-active --quiet sshd && ! systemctl is-active --quiet ssh; then
+    # Restart SSH service
+    log_info "Restarting SSH service ($SSH_SERVICE)..."
+    if ! service_restart "$SSH_SERVICE"; then
         log_error "Failed to restart SSH service!"
+        exit 1
+    fi
+    
+    # Verify SSH is running
+    if ! service_is_active "$SSH_SERVICE"; then
+        log_error "SSH service is not active after restart!"
         exit 1
     fi
     
@@ -314,33 +344,58 @@ configure_firewall() {
         return 1
     fi
     
-    # Reset UFW
-    ufw --force reset
+    # Get firewall type for this OS
+    FIREWALL_TYPE=$(get_firewall_service)
+    log_info "Using firewall: $FIREWALL_TYPE"
     
-    # Default policies
-    ufw default deny incoming
-    ufw default allow outgoing
-    
-    # IMPORTANT: Allow SSH FIRST before enabling firewall
-    ufw allow "$SSH_PORT/tcp" comment "SSH"
-    
-    log_warn "Firewall will be enabled with SSH port $SSH_PORT allowed"
-    log_warn "Make sure you can connect on this port before proceeding!"
-    
-    echo -n "${YELLOW}Enable firewall now? (yes/no):${NC} "
-    read -r confirm
-    if [[ "$confirm" != "yes" ]]; then
-        log_warn "Firewall configuration skipped - you can enable it later"
-        log_info "To enable: ufw allow $SSH_PORT/tcp && ufw --force enable"
-        return 0
+    if [ "$FIREWALL_TYPE" = "ufw" ]; then
+        # UFW (Ubuntu/Debian)
+        ufw --force reset
+        
+        # Default policies
+        ufw default deny incoming
+        ufw default allow outgoing
+        
+        # IMPORTANT: Allow SSH FIRST before enabling firewall
+        ufw allow "$SSH_PORT/tcp" comment "SSH"
+        
+        log_warn "Firewall will be enabled with SSH port $SSH_PORT allowed"
+        log_warn "Make sure you can connect on this port before proceeding!"
+        
+        echo -ne "${YELLOW}Enable firewall now? (yes/no):${NC} "
+        read -r confirm
+        if [[ "$confirm" != "yes" ]]; then
+            log_warn "Firewall configuration skipped - you can enable it later"
+            log_info "To enable: ufw allow $SSH_PORT/tcp && ufw --force enable"
+            return 0
+        fi
+        
+        # Allow HTTP/HTTPS (for web services)
+        ufw allow 80/tcp comment "HTTP"
+        ufw allow 443/tcp comment "HTTPS"
+        
+        # Enable UFW
+        ufw --force enable
+        
+    elif [ "$FIREWALL_TYPE" = "firewalld" ]; then
+        # firewalld (RHEL/CentOS/AlmaLinux)
+        systemctl enable --now firewalld
+        
+        # Allow SSH port
+        firewall-cmd --permanent --add-port="${SSH_PORT}/tcp"
+        
+        log_warn "Firewall will be configured with SSH port $SSH_PORT allowed"
+        
+        # Allow HTTP/HTTPS (for web services)
+        firewall-cmd --permanent --add-service=http
+        firewall-cmd --permanent --add-service=https
+        
+        # Reload firewall
+        firewall-cmd --reload
+    else
+        log_error "No supported firewall found!"
+        return 1
     fi
-    
-    # Allow HTTP/HTTPS (for web services)
-    ufw allow 80/tcp comment "HTTP"
-    ufw allow 443/tcp comment "HTTPS"
-    
-    # Enable UFW
-    ufw --force enable
     
     log_success "Firewall configured and enabled"
 }
@@ -348,6 +403,16 @@ configure_firewall() {
 # Configure Fail2ban
 configure_fail2ban() {
     log_step "Step 7: Fail2ban Configuration"
+    
+    # Get correct log path for this OS
+    local SSH_LOG_PATH
+    if is_debian_based; then
+        SSH_LOG_PATH="/var/log/auth.log"
+    elif is_rhel_based; then
+        SSH_LOG_PATH="/var/log/secure"
+    else
+        SSH_LOG_PATH="/var/log/auth.log"
+    fi
     
     cat > /etc/fail2ban/jail.local <<EOF
 [DEFAULT]
@@ -361,12 +426,12 @@ action = %(action_mw)s
 [sshd]
 enabled = true
 port = $SSH_PORT
-logpath = /var/log/auth.log
+logpath = $SSH_LOG_PATH
 maxretry = 3
 EOF
     
-    systemctl restart fail2ban
-    systemctl enable fail2ban
+    service_restart fail2ban
+    service_enable fail2ban
     
     log_success "Fail2ban configured"
 }

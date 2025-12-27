@@ -7,6 +7,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
+source "${SCRIPT_DIR}/lib/os-detect.sh"
 source "${SCRIPT_DIR}/lib/docker.sh"
 
 APP_NAME="docker-engine"
@@ -31,50 +32,38 @@ if check_docker; then
     exit 0
 fi
 
-# Detect OS
-detect_os
-
 log_step "Step 1: Removing old Docker versions"
-if [ "$PACKAGE_MANAGER" = "apt" ]; then
-    run_sudo apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
-elif [ "$PACKAGE_MANAGER" = "yum" ]; then
-    run_sudo yum remove -y docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine 2>/dev/null || true
+if is_debian_based; then
+    pkg_remove docker docker-engine docker.io containerd runc 2>/dev/null || true
+elif is_rhel_based; then
+    pkg_remove docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine 2>/dev/null || true
 fi
 
 log_step "Step 2: Installing prerequisites"
-if [ "$PACKAGE_MANAGER" = "apt" ]; then
-    run_sudo apt-get update
-    run_sudo apt-get install -y \
-        apt-transport-https \
-        ca-certificates \
-        curl \
-        gnupg \
-        lsb-release
+if is_debian_based; then
+    pkg_update
+    pkg_install apt-transport-https ca-certificates curl gnupg lsb-release
     
     # Add Docker's official GPG key
     log_info "Adding Docker GPG key..."
     run_sudo mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/${OS_NAME}/gpg | run_sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL https://download.docker.com/linux/${OS_ID}/gpg | run_sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     
     # Set up the repository
     log_info "Setting up Docker repository..."
     echo \
-        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${OS_NAME} \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${OS_ID} \
         $(lsb_release -cs) stable" | run_sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     
-    run_sudo apt-get update
+    pkg_update
     
-elif [ "$PACKAGE_MANAGER" = "yum" ]; then
-    run_sudo yum install -y yum-utils
+elif is_rhel_based; then
+    pkg_install yum-utils
     run_sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 fi
 
 log_step "Step 3: Installing Docker Engine"
-if [ "$PACKAGE_MANAGER" = "apt" ]; then
-    run_sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-elif [ "$PACKAGE_MANAGER" = "yum" ]; then
-    run_sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-fi
+pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 log_step "Step 4: Starting Docker service"
 run_sudo systemctl start docker

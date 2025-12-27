@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
+source "${SCRIPT_DIR}/lib/os-detect.sh"
 
 APP_NAME="redis"
 CONF_FILE="/etc/redis/redis.conf"
@@ -42,20 +43,18 @@ echo ""
 
 # Install Redis
 log_step "Step 2: Installing Redis"
-case "$PACKAGE_MANAGER" in
-    apt)
-        run_sudo apt-get update -qq
-        run_sudo apt-get install -y redis-server redis-tools
-        ;;
-    yum|dnf)
-        run_sudo $PACKAGE_MANAGER install -y epel-release
-        run_sudo $PACKAGE_MANAGER install -y redis
-        ;;
-    *)
-        log_error "Unsupported package manager: $PACKAGE_MANAGER"
-        exit 1
-        ;;
-esac
+pkg_update
+
+if is_debian_based; then
+    pkg_install redis-server redis-tools
+elif is_rhel_based; then
+    pkg_install epel-release
+    pkg_install redis
+else
+    log_error "Unsupported OS: $OS_ID"
+    exit 1
+fi
+
 log_success "Redis installed"
 echo ""
 

@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
+source "${SCRIPT_DIR}/lib/os-detect.sh"
 
 APP_NAME="certbot"
 CERT_DIR="/etc/letsencrypt"
@@ -50,26 +51,24 @@ echo ""
 
 # Install Certbot
 log_step "Step 3: Installing Certbot"
-case "$PACKAGE_MANAGER" in
-    apt)
-        run_sudo apt-get update -qq
-        run_sudo apt-get install -y certbot
-        if [ "$NGINX_RUNNING" = true ]; then
-            run_sudo apt-get install -y python3-certbot-nginx
-        fi
-        ;;
-    yum|dnf)
-        run_sudo $PACKAGE_MANAGER install -y epel-release
-        run_sudo $PACKAGE_MANAGER install -y certbot
-        if [ "$NGINX_RUNNING" = true ]; then
-            run_sudo $PACKAGE_MANAGER install -y python3-certbot-nginx
-        fi
-        ;;
-    *)
-        log_error "Unsupported package manager: $PACKAGE_MANAGER"
-        exit 1
-        ;;
-esac
+pkg_update
+
+if is_debian_based; then
+    pkg_install certbot
+    if [ "$NGINX_RUNNING" = true ]; then
+        pkg_install python3-certbot-nginx
+    fi
+elif is_rhel_based; then
+    pkg_install epel-release
+    pkg_install certbot
+    if [ "$NGINX_RUNNING" = true ]; then
+        pkg_install python3-certbot-nginx
+    fi
+else
+    log_error "Unsupported OS: $OS_ID"
+    exit 1
+fi
+
 log_success "Certbot installed"
 echo ""
 

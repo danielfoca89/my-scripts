@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
+source "${SCRIPT_DIR}/lib/os-detect.sh"
 
 APP_NAME="fail2ban"
 
@@ -39,23 +40,18 @@ echo ""
 
 # Install Fail2ban
 log_step "Step 2: Installing Fail2ban package"
-case "$PACKAGE_MANAGER" in
-    apt)
-        run_sudo apt-get update -qq
-        run_sudo apt-get install -y fail2ban
-        ;;
-    yum)
-        run_sudo yum install -y epel-release
-        run_sudo yum install -y fail2ban fail2ban-systemd
-        ;;
-    dnf)
-        run_sudo dnf install -y fail2ban fail2ban-systemd
-        ;;
-    *)
-        log_error "Unsupported package manager: $PACKAGE_MANAGER"
-        exit 1
-        ;;
-esac
+pkg_update
+
+if is_debian_based; then
+    pkg_install fail2ban
+elif is_rhel_based; then
+    pkg_install epel-release
+    pkg_install fail2ban fail2ban-systemd
+else
+    log_error "Unsupported OS: $OS_ID"
+    exit 1
+fi
+
 log_success "Fail2ban installed"
 echo ""
 

@@ -9,6 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
+source "${SCRIPT_DIR}/lib/os-detect.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
 
 APP_NAME="nodejs"
@@ -33,16 +34,17 @@ done
 if [ ${#MISSING[@]} -gt 0 ]; then
     log_warn "Missing dependencies: ${MISSING[*]}"
     log_info "Installing..."
-    detect_os
-    case "$PACKAGE_MANAGER" in
-        apt)
-            run_sudo apt-get update -qq
-            run_sudo apt-get install -y curl git build-essential
-            ;;
-        yum|dnf)
-            run_sudo $PACKAGE_MANAGER install -y curl git gcc gcc-c++ make
-            ;;
-    esac
+    pkg_update
+    
+    if is_debian_based; then
+        pkg_install curl git build-essential
+    elif is_rhel_based; then
+        pkg_install curl git gcc gcc-c++ make
+    else
+        log_error "Unsupported OS: $OS_ID"
+        exit 1
+    fi
+    
     log_success "Dependencies installed"
 else
     log_success "All dependencies available"

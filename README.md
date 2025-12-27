@@ -61,6 +61,30 @@ cd my-scripts
 - Node.js - JavaScript runtime (via NVM)
 - Log Maintenance - Automated log rotation & cleanup
 
+## Universal OS Support
+
+**Works on any major Linux distribution:**
+- 🐧 **Debian/Ubuntu** - Debian 11+, Ubuntu 20.04+, Linux Mint, Pop!_OS
+- 🎩 **RHEL/CentOS** - AlmaLinux 8+, Rocky Linux 8+, CentOS 8+, Fedora 36+
+- ⚡ **Arch Linux** - Arch, Manjaro
+
+**Auto-adapts to your system:**
+```bash
+# Automatically detects and uses:
+- Package Manager: apt / dnf / yum / pacman
+- SSH Service: ssh (Debian) or sshd (RHEL)
+- Firewall: ufw (Debian) or firewalld (RHEL)
+- Log Paths: /var/log/auth.log or /var/log/secure
+```
+
+**Test detection:**
+```bash
+./test-os-detection.sh
+# Shows: OS: ubuntu 22.04 (debian)
+# Shows: SSH Service: ssh
+# Shows: Firewall: ufw
+```
+
 ## Key Features
 
 ### 🚀 Smart Dependency Management
@@ -94,11 +118,14 @@ cd my-scripts
 - Mixed deployments: Docker + native installations
 - Health checks and auto-restart policies
 - Zero placeholders - everything functional
-mart orchestrator with dependency checking
-├── lib/                         # Core libraries (3 modules)
+```
+my-scripts/
+├── orchestrator.sh              # Smart orchestrator with dependency checking
+├── lib/                         # Core libraries (4 modules)
 │   ├── utils.sh                # Logging & system helpers
 │   ├── secrets.sh              # Credential management
-│   └── docker.sh               # Docker operations
+│   ├── docker.sh               # Docker operations
+│   └── os-detect.sh            # Universal OS detection & abstraction
 ├── apps/                        # 20 application installers
 │   ├── infrastructure/         # Docker, Nginx*, Portainer, Certbot*, Arcane
 │   ├── databases/              # PostgreSQL, MariaDB, MongoDB, Redis*
@@ -282,10 +309,14 @@ All installers follow the same structure:
 
 ## Statistics
 
-- **4,400+ lines** of production bash code
+- **5,500+ lines** of production bash code
 - **20 applications** fully implemented
-- **3 core libraries** (utils, secrets, docker)
-- **1 simple orchestrator** (1.7K, plain text)
+- **4 core libraries** (utils, secrets, docker, os-detect)
+- **Universal OS support** - Debian, Ubuntu, AlmaLinux, Rocky, Fedora
+- **Smart dependency resolution** - auto-install full chain
+- **4 native installers** (Nginx, Redis, Certbot, WireGuard)
+- **Automatic SSL** configuration for domain-based apps
+- **PostgreSQL shared service** pattern
 - **Zero placeholders** - 100% functional
 - **100% syntax validated** ✅
 
@@ -293,12 +324,15 @@ All installers follow the same structure:
 
 ✅ Auto-generated strong passwords (32-64 chars)  
 ✅ Encrypted credential storage (600/700 permissions)  
-✅ SSH key-only authentication  
-✅ UFW/firewalld firewall configuration  
+✅ Password-based SSH with su - for root access  
+✅ Universal firewall support (UFW/firewalld)  
 ✅ Docker network isolation  
 ✅ Fail2ban intrusion prevention  
 ✅ Regular security audits via Trivy  
-✅ SSL/TLS certificate automation  
+✅ SSL/TLS certificate automation (Let's Encrypt)  
+✅ HTTPS enforcement with Nginx reverse proxy  
+✅ Database isolation (each app has own DB/user)  
+✅ Native installations for critical services  
 
 ## License
 
