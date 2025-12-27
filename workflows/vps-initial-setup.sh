@@ -1,0 +1,487 @@
+#!/bin/bash
+
+# ==============================================================================
+# VPS INITIAL SETUP & HARDENING
+# Enterprise-grade VPS configuration and security hardening
+# Run this LOCALLY on the VPS (not via SSH)
+# ==============================================================================
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+log_step() { echo -e "${BLUE}>>> $1${NC}"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+
+# Banner
+print_banner() {
+    clear
+    cat << 'EOF'
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║             VPS INITIAL SETUP & HARDENING                     ║
+║            Enterprise Security Configuration                 ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+EOF
+    echo ""
+}
+
+# Gather user input
+gather_information() {
+    log_step "Configuration Input Required"
+    echo ""
+    
+    # New username
+    while true; do
+        echo -n "${YELLOW}Enter new admin username:${NC} "
+        read -r NEW_USER
+        
+        if [ -z "$NEW_USER" ]; then
+            log_error "Username cannot be empty"
+            continue
+        fi
+        
+        if [[ ! "$NEW_USER" =~ ^[a-z_][a-z0-9_-]{2,31}$ ]]; then
+            log_error "Invalid username (use lowercase, 3-32 chars)"
+            continue
+        fi
+        
+        if id "$NEW_USER" &>/dev/null; then
+            log_warn "User $NEW_USER already exists"
+            echo -n "${YELLOW}Use existing user? (y/n):${NC} "
+            read -r choice
+            if [[ "$choice" =~ ^[Yy]$ ]]; then
+                break
+            fi
+            continue
+        fi
+        
+        break
+    done
+    
+    # New password
+    while true; do
+        echo -n "${YELLOW}Enter password for $NEW_USER:${NC} "
+        read -s NEW_PASSWORD
+        echo ""
+        
+        if [ ${#NEW_PASSWORD} -lt 8 ]; then
+            log_error "Password must be at least 8 characters"
+            continue
+        fi
+        
+        echo -n "${YELLOW}Confirm password:${NC} "
+        read -s PASSWORD_CONFIRM
+        echo ""
+        
+        if [ "$NEW_PASSWORD" != "$PASSWORD_CONFIRM" ]; then
+            log_error "Passwords do not match"
+            continue
+        fi
+        
+        break
+    done
+    
+    # SSH port
+    while true; do
+        echo -n "${YELLOW}Enter new SSH port [2222]:${NC} "
+        read -r SSH_PORT
+        SSH_PORT=${SSH_PORT:-2222}
+        
+        if [[ ! "$SSH_PORT" =~ ^[0-9]+$ ]] || [ "$SSH_PORT" -lt 1024 ] || [ "$SSH_PORT" -gt 65535 ]; then
+            log_error "Port must be between 1024 and 65535"
+            continue
+        fi
+        
+        break
+    done
+    
+    echo ""
+    log_info "Configuration Summary:"
+    echo "  Username: $NEW_USER"
+    echo "  SSH Port: $SSH_PORT"
+    echo ""
+    
+    echo -n "${YELLOW}Proceed with setup? (yes/no):${NC} "
+    read -r confirm
+    if [[ "$confirm" != "yes" ]]; then
+        log_info "Setup cancelled"
+        exit 0
+    fi
+}
+
+# System update
+system_update() {
+    log_step "Step 1: System Update"
+    
+    # Wait for apt locks
+    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+        log_info "Waiting for other package managers to finish..."
+        sleep 5
+    done
+    
+    apt-get update -y
+    apt-get upgrade -y
+    apt-get autoremove -y
+    
+    log_success "System updated"
+}
+
+# Install security tools
+install_security_tools() {
+    log_step "Step 2: Installing Security Tools"
+    
+    apt-get install -y \
+        ufw \
+        fail2ban \
+        auditd \
+        chrony \
+        unattended-upgrades \
+        apt-listchanges \
+        curl \
+        wget \
+        git \
+        htop \
+        vim \
+        net-tools \
+        libpam-tmpdir
+    
+    log_success "Security tools installed"
+}
+
+# Create admin user
+create_admin_user() {
+    log_step "Step 3: Setting Up Admin User"
+    
+    if ! id "$NEW_USER" &>/dev/null; then
+        useradd -m -s /bin/bash "$NEW_USER"
+        echo "${NEW_USER}:${NEW_PASSWORD}" | chpasswd
+        usermod -aG sudo "$NEW_USER"
+        log_success "User $NEW_USER created"
+    else
+        echo "${NEW_USER}:${NEW_PASSWORD}" | chpasswd
+        usermod -aG sudo "$NEW_USER"
+        log_success "User $NEW_USER updated"
+    fi
+    
+    # Setup SSH directory
+    USER_HOME="/home/$NEW_USER"
+    mkdir -p "$USER_HOME/.ssh"
+    chmod 700 "$USER_HOME/.ssh"
+    touch "$USER_HOME/.ssh/authorized_keys"
+    chmod 600 "$USER_HOME/.ssh/authorized_keys"
+    chown -R "$NEW_USER:$NEW_USER" "$USER_HOME/.ssh"
+    
+    log_success "SSH directory configured"
+}
+
+# Kernel and system hardening
+kernel_hardening() {
+    log_step "Step 4: Kernel Hardening"
+    
+    # Secure shared memory
+    if ! grep -q "/dev/shm" /etc/fstab; then
+        echo "tmpfs /dev/shm tmpfs defaults,noexec,nosuid 0 0" >> /etc/fstab
+        mount -o remount /dev/shm 2>/dev/null || true
+    fi
+    
+    # Sysctl hardening
+    cat > /etc/sysctl.d/99-security.conf <<'EOF'
+# IP Forwarding
+net.ipv4.ip_forward = 0
+
+# Syn flood protection
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_syn_retries = 2
+net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_max_syn_backlog = 4096
+
+# IP spoofing protection
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+
+# Ignore ICMP redirects
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+
+# Ignore ICMP requests
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+# Log suspicious packets
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+
+# Kernel security
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+kernel.unprivileged_bpf_disabled = 1
+net.core.bpf_jit_harden = 2
+EOF
+    
+    sysctl -p /etc/sysctl.d/99-security.conf >/dev/null
+    
+    log_success "Kernel hardened"
+}
+
+# Configure SSH
+configure_ssh() {
+    log_step "Step 5: SSH Hardening"
+    
+    # Backup original config
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup_$(date +%Y%m%d_%H%M%S)
+    
+    # SSH configuration
+    cat > /etc/ssh/sshd_config.d/99-hardening.conf <<EOF
+# Port and Protocol
+Port $SSH_PORT
+AddressFamily inet
+Protocol 2
+
+# Authentication
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+
+# Security
+X11Forwarding no
+PrintMotd no
+PermitUserEnvironment no
+AllowTcpForwarding no
+AllowAgentForwarding no
+MaxAuthTries 3
+MaxSessions 2
+
+# Timeouts
+ClientAliveInterval 300
+ClientAliveCountMax 2
+LoginGraceTime 60
+
+# Allowed users
+AllowUsers $NEW_USER
+EOF
+    
+    log_success "SSH configured on port $SSH_PORT"
+}
+
+# Configure firewall
+configure_firewall() {
+    log_step "Step 6: Firewall Configuration"
+    
+    # Reset UFW
+    ufw --force reset
+    
+    # Default policies
+    ufw default deny incoming
+    ufw default allow outgoing
+    
+    # Allow SSH on new port
+    ufw allow "$SSH_PORT/tcp" comment "SSH"
+    
+    # Allow HTTP/HTTPS (for web services)
+    ufw allow 80/tcp comment "HTTP"
+    ufw allow 443/tcp comment "HTTPS"
+    
+    # Enable UFW
+    ufw --force enable
+    
+    log_success "Firewall configured"
+}
+
+# Configure Fail2ban
+configure_fail2ban() {
+    log_step "Step 7: Fail2ban Configuration"
+    
+    cat > /etc/fail2ban/jail.local <<EOF
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 3
+destemail = root@localhost
+sendername = Fail2Ban
+action = %(action_mw)s
+
+[sshd]
+enabled = true
+port = $SSH_PORT
+logpath = /var/log/auth.log
+maxretry = 3
+EOF
+    
+    systemctl restart fail2ban
+    systemctl enable fail2ban
+    
+    log_success "Fail2ban configured"
+}
+
+# Configure audit logs
+configure_audit() {
+    log_step "Step 8: Audit Logging"
+    
+    cat > /etc/audit/rules.d/audit.rules <<'EOF'
+# Monitor identity changes
+-w /etc/passwd -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+
+# Monitor SSH configuration
+-w /etc/ssh/sshd_config -p warx -k sshd_config
+
+# Monitor sudo usage
+-w /etc/sudoers -p wa -k sudoers
+-w /var/log/sudo.log -p wa -k sudo_log
+
+# Monitor network configuration
+-w /etc/network/ -p wa -k network
+
+# Monitor system calls
+-a always,exit -F arch=b64 -S execve -k exec
+EOF
+    
+    systemctl restart auditd
+    
+    log_success "Audit logging configured"
+}
+
+# Configure automatic updates
+configure_auto_updates() {
+    log_step "Step 9: Automatic Security Updates"
+    
+    cat > /etc/apt/apt.conf.d/50unattended-upgrades <<'EOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+    
+    cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+    
+    log_success "Automatic updates configured"
+}
+
+# Set custom MOTD
+set_motd() {
+    log_step "Step 10: Setting MOTD"
+    
+    rm -f /etc/update-motd.d/* 2>/dev/null || true
+    
+    cat > /etc/motd <<'EOF'
+═══════════════════════════════════════════════════════════
+ ⚠️  WARNING: RESTRICTED ACCESS SYSTEM
+═══════════════════════════════════════════════════════════
+
+ All activities on this system are logged and monitored.
+ Unauthorized access will be reported and prosecuted.
+ 
+ This server is configured with enterprise security:
+ • SSH Hardening
+ • Firewall Protection (UFW)
+ • Intrusion Prevention (Fail2ban)
+ • Audit Logging
+ • Automatic Security Updates
+ 
+═══════════════════════════════════════════════════════════
+EOF
+    
+    log_success "MOTD configured"
+}
+
+# Final checks
+final_checks() {
+    log_step "Step 11: Final Verification"
+    
+    # Check services
+    local services=("ssh" "ufw" "fail2ban" "auditd")
+    for service in "${services[@]}"; do
+        if systemctl is-active --quiet "$service"; then
+            log_success "$service is running"
+        else
+            log_warn "$service is not running"
+        fi
+    done
+    
+    # Check firewall rules
+    log_info "Firewall status:"
+    ufw status numbered
+}
+
+# Main execution
+main() {
+    # Check if root
+    if [ "$(id -u)" -ne 0 ]; then
+        log_error "This script must be run as root"
+        exit 1
+    fi
+    
+    print_banner
+    
+    log_warn "This script will configure and harden your VPS"
+    log_warn "Make sure you have console access in case of issues!"
+    echo ""
+    
+    gather_information
+    
+    echo ""
+    log_info "Starting VPS setup and hardening..."
+    echo ""
+    
+    system_update
+    install_security_tools
+    create_admin_user
+    kernel_hardening
+    configure_ssh
+    configure_firewall
+    configure_fail2ban
+    configure_audit
+    configure_auto_updates
+    set_motd
+    final_checks
+    
+    echo ""
+    log_success "═══════════════════════════════════════════"
+    log_success "  VPS Setup Completed Successfully!"
+    log_success "═══════════════════════════════════════════"
+    echo ""
+    log_info "Important Information:"
+    echo "  • New User:    $NEW_USER"
+    echo "  • SSH Port:    $SSH_PORT"
+    echo "  • Server IP:   $(hostname -I | awk '{print $1}')"
+    echo ""
+    log_warn "Next Steps:"
+    echo "  1. Test SSH connection in a NEW terminal:"
+    echo "     ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
+    echo ""
+    echo "  2. Verify you can login and use sudo"
+    echo ""
+    echo "  3. Once confirmed, you can disable root login completely"
+    echo ""
+    log_warn "⚠️  DO NOT close this session until you verify SSH access!"
+    echo ""
+}
+
+# Run
+main
