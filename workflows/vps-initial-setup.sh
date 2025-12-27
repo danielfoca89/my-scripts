@@ -337,12 +337,27 @@ EOF
 configure_firewall() {
     log_step "Step 6: Firewall Configuration"
     
-    # Verify SSH is running on new port
-    if ! ss -tlnp | grep -q ":$SSH_PORT "; then
+    # Wait for SSH to fully bind to new port
+    log_info "Waiting for SSH to bind to port $SSH_PORT..."
+    sleep 3
+    
+    # Verify SSH is running on new port (check multiple times)
+    SSH_LISTENING=false
+    for i in {1..5}; do
+        if ss -tlnp 2>/dev/null | grep -q ":$SSH_PORT" || netstat -tlnp 2>/dev/null | grep -q ":$SSH_PORT"; then
+            SSH_LISTENING=true
+            break
+        fi
+        sleep 1
+    done
+    
+    if [ "$SSH_LISTENING" = false ]; then
         log_error "SSH is not listening on port $SSH_PORT!"
         log_error "Skipping firewall configuration for safety"
         return 1
     fi
+    
+    log_success "Confirmed SSH is listening on port $SSH_PORT"
     
     # Get firewall type for this OS
     FIREWALL_TYPE=$(get_firewall_service)
