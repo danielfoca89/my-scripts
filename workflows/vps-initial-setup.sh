@@ -126,6 +126,7 @@ gather_information() {
     
     echo "Your connection will be interrupted when SSH is restarted."
     echo "After setup, connect using the new username and port."
+    echo ""
 
     echo -ne "${YELLOW}Proceed with setup? (yes/no):${NC} "
     read -r confirm
@@ -354,15 +355,12 @@ configure_firewall() {
         log_info "Allowing SSH on port $SSH_PORT..."
         ufw allow "$SSH_PORT/tcp" comment "SSH"
         
-        # Allow HTTP/HTTPS (for web services)
-        ufw allow 80/tcp comment "HTTP"
-        ufw allow 443/tcp comment "HTTPS"
-        
         # Enable UFW
         log_info "Enabling firewall..."
         ufw --force enable
         
         log_success "Firewall enabled with SSH port $SSH_PORT allowed"
+        log_info "HTTP/HTTPS ports will be opened when nginx is installed"
         
     elif [ "$FIREWALL_TYPE" = "firewalld" ]; then
         # firewalld (RHEL/CentOS/AlmaLinux)
@@ -371,14 +369,11 @@ configure_firewall() {
         # Allow SSH port
         firewall-cmd --permanent --add-port="${SSH_PORT}/tcp"
         
-        log_warn "Firewall will be configured with SSH port $SSH_PORT allowed"
-        
-        # Allow HTTP/HTTPS (for web services)
-        firewall-cmd --permanent --add-service=http
-        firewall-cmd --permanent --add-service=https
-        
         # Reload firewall
         firewall-cmd --reload
+        
+        log_success "Firewall enabled with SSH port $SSH_PORT allowed"
+        log_info "HTTP/HTTPS ports will be opened when nginx is installed"
     else
         log_error "No supported firewall found!"
         return 1
