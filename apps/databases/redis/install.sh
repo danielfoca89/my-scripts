@@ -1,224 +1,283 @@
 #!/bin/bash
 
 # ==============================================================================
-# REDIS CACHE/DATABASE INSTALLATION
-# Deploys Redis in Docker container with auto-generated password
+# REDIS CACHE/DATABASE INSTALLATION (NATIVE)
+# Installs Redis directly on host for maximum performance and low latency
 # ==============================================================================
+
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
-source "${SCRIPT_DIR}/lib/docker.sh"
 
 APP_NAME="redis"
-CONTAINER_NAME="redis"
-DATA_DIR="/opt/databases/redis"
+CONF_FILE="/etc/redis/redis.conf"
+DATA_DIR="/var/lib/redis"
+LOG_FILE="/var/log/redis/redis-server.log"
 
 log_info "═══════════════════════════════════════════"
-log_info "  Installing Redis Cache/Database"
+log_info "  Installing Redis Cache/Database (Native)"
 log_info "═══════════════════════════════════════════"
 echo ""
 
-# Check dependency
-log_step "Step 1: Checking dependencies"
-if ! check_docker; then
-    log_error "Docker is not installed"
-    log_info "Please install Docker first: Infrastructure > Docker Engine"
-    exit 1
-fi
-log_success "Docker is available"
+# Detect OS
+log_step "Step 1: Detecting operating system"
+detect_os
+log_success "OS detected: $OS_TYPE"
+log_info "Package manager: $PACKAGE_MANAGER"
 echo ""
 
 # Check if already installed
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "Redis container already exists"
-    
-    if has_credentials "$APP_NAME"; then
-        log_info "Using existing credentials from ~/.vps-secrets/.env_${APP_NAME}"
-        
-        if confirm_action "Do you want to reinstall Redis?"; then
-            log_info "Stopping and removing existing container..."
-            docker stop "$CONTAINER_NAME" 2>/dev/null || true
-            docker rm "$CONTAINER_NAME" 2>/dev/null || true
-        else
-            log_info "Installation cancelled"
-            exit 0
-        fi
+if systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null; then
+    log_warn "Redis is already running"
+    if confirm_action "Reinstall/Reconfigure?"; then
+        log_info "Proceeding with reconfiguration..."
+    else
+        log_info "Installation cancelled"
+        exit 0
     fi
 fi
+echo ""
+
+# Install Redis
+log_step "Step 2: Installing Redis"
+case "$PACKAGE_MANAGER" in
+    apt)
+        run_sudo apt-get update -qq
+        run_sudo apt-get install -y redis-server redis-tools
+        ;;
+    yum|dnf)
+        run_sudo $PACKAGE_MANAGER install -y epel-release
+        run_sudo $PACKAGE_MANAGER install -y redis
+        ;;
+    *)
+        log_error "Unsupported package manager: $PACKAGE_MANAGER"
+        exit 1
+        ;;
+esac
+log_success "Redis installed"
+echo ""
 
 # Manage credentials
-log_step "Step 2: Managing credentials"
-if ! has_credentials "$APP_NAME"; then
-    log_info "Generating secure password..."
-    
-    REDIS_PASSWORD=$(generate_secure_password)
-    
-    save_secret "$APP_NAME" "REDIS_PASSWORD" "$REDIS_PASSWORD"
-    
-    log_success "Password generated and saved"
+log_step "Step 3: Setting up Redis password"
+
+if has_credentials "$APP_NAME"; then
+    log_info "Using existing password from credentials store"
+    REDIS_PASSWORD=$(get_secret "$APP_NAME" "REDIS_PASSWORD")
 else
-    log_info "Loading existing credentials..."
+    log_info "Generating secure password..."
+    REDIS_PASSWORD=$(generate_secret "REDIS_PASSWORD")
+    save_credentials "$APP_NAME" "REDIS_PASSWORD=$REDIS_PASSWORD"
+    log_success "Password saved to credentials store"
+fi
+echo ""
+
+# Configure Redis
+log_step "Step 4: Configuring Redis"
+
+# Backup original config
+if [ -f "$CONF_FILE" ]; then
+    run_sudo cp "$CONF_FILE" "${CONF_FILE}.backup_$(date +%Y%m%d_%H%M%S)"
 fi
 
-load_secrets "$APP_NAME"
-log_success "Credentials loaded"
-echo ""
+# Create optimized Redis configuration
+run_sudo tee "$CONF_FILE" > /dev/null <<EOF
+# Redis Configuration - Optimized for Production
 
-# Setup directories
-log_step "Step 3: Setting up directories"
-create_app_directory "$DATA_DIR/data"
-log_success "Data directory created: $DATA_DIR"
-echo ""
-
-# Create Redis configuration
-log_step "Step 4: Creating Redis configuration"
-cat > "${DATA_DIR}/redis.conf" << EOF
-# Redis Configuration
-requirepass $REDIS_PASSWORD
-bind 0.0.0.0
-protected-mode yes
+# Network
+bind 127.0.0.1 ::1
 port 6379
+protected-mode yes
+timeout 0
+tcp-keepalive 300
 
-# Persistence
+# General
+daemonize yes
+supervised systemd
+pidfile /var/run/redis/redis-server.pid
+loglevel notice
+logfile $LOG_FILE
+databases 16
+
+# Snapshotting (RDB persistence)
 save 900 1
 save 300 10
 save 60 10000
-appendonly yes
-appendfilename "appendonly.aof"
+stop-writes-on-bgsave-error yes
+rdbcompression yes
+rdbchecksum yes
+dbfilename dump.rdb
+dir $DATA_DIR
+
+# Replication
+replica-read-only yes
+
+# Security
+requirepass $REDIS_PASSWORD
 
 # Limits
+maxclients 10000
 maxmemory 256mb
 maxmemory-policy allkeys-lru
 
-# Logging
-loglevel notice
+# Append Only File (AOF persistence)
+appendonly yes
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
 
-# Performance
-tcp-backlog 511
-timeout 0
-tcp-keepalive 300
+# Slow log
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+
+# Advanced config
+hash-max-ziplist-entries 512
+hash-max-ziplist-value 64
+list-max-ziplist-size -2
+set-max-intset-entries 512
+zset-max-ziplist-entries 128
+zset-max-ziplist-value 64
+activerehashing yes
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+hz 10
+dynamic-hz yes
 EOF
 
-log_success "Redis configuration created"
+run_sudo chown redis:redis "$CONF_FILE"
+run_sudo chmod 640 "$CONF_FILE"
+log_success "Redis configured"
 echo ""
 
-# Deploy container
-log_step "Step 5: Deploying Redis container"
-log_info "Starting Redis 7..."
-
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    --network vps_network \
-    -v "${DATA_DIR}/data:/data" \
-    -v "${DATA_DIR}/redis.conf:/usr/local/etc/redis/redis.conf" \
-    -p 6379:6379 \
-    redis:7-alpine \
-    redis-server /usr/local/etc/redis/redis.conf
-
-log_success "Redis container started"
+# Setup directories and permissions
+log_step "Step 5: Setting up directories"
+run_sudo mkdir -p "$DATA_DIR"
+run_sudo mkdir -p "$(dirname "$LOG_FILE")"
+run_sudo chown -R redis:redis "$DATA_DIR"
+run_sudo chown -R redis:redis "$(dirname "$LOG_FILE")"
+run_sudo chmod 750 "$DATA_DIR"
+log_success "Directories configured"
 echo ""
 
-# Wait for Redis to be ready
-log_step "Step 6: Waiting for Redis to be ready"
-log_info "This may take 10-20 seconds..."
+# Configure systemd service
+log_step "Step 6: Configuring systemd service"
 
-MAX_ATTEMPTS=30
-ATTEMPT=0
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    if docker exec "$CONTAINER_NAME" redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q "PONG"; then
-        log_success "Redis is ready!"
-        break
-    fi
-    ATTEMPT=$((ATTEMPT + 1))
-    sleep 1
-    echo -n "."
-done
-echo ""
+# Determine service name (different on Ubuntu vs CentOS)
+if [ "$PACKAGE_MANAGER" = "apt" ]; then
+    SERVICE_NAME="redis-server"
+else
+    SERVICE_NAME="redis"
+fi
 
-if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-    log_error "Redis did not become ready in time"
-    log_info "Check logs: docker logs $CONTAINER_NAME"
+run_sudo systemctl enable "$SERVICE_NAME"
+run_sudo systemctl restart "$SERVICE_NAME"
+
+# Wait for Redis to start
+sleep 2
+
+if systemctl is-active --quiet "$SERVICE_NAME"; then
+    log_success "Redis is running"
+else
+    log_error "Failed to start Redis"
+    log_info "Check logs: sudo journalctl -u $SERVICE_NAME -n 50"
     exit 1
 fi
 echo ""
 
-# Verify container health
-log_step "Step 7: Verifying installation"
-if check_container_health "$CONTAINER_NAME"; then
-    log_success "Redis is running and healthy"
+# Test connection
+log_step "Step 7: Testing Redis connection"
+if redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q "PONG"; then
+    log_success "Redis connection test passed"
 else
-    log_warn "Container is running but health check inconclusive"
+    log_error "Redis connection test failed"
+    exit 1
 fi
-
-# Get Redis info
-log_info "Redis version:"
-docker exec "$CONTAINER_NAME" redis-cli -a "$REDIS_PASSWORD" info server 2>/dev/null | grep "redis_version" || true
 echo ""
 
-# Display connection info
+# Display installation info
 log_success "═══════════════════════════════════════════"
 log_success "  Redis Installation Complete!"
 log_success "═══════════════════════════════════════════"
 echo ""
 
-display_connection_info "$APP_NAME"
-
-echo ""
-log_info "Connection examples:"
-echo "  # From host:"
-echo "  redis-cli -h 127.0.0.1 -p 6379 -a '<password>'"
-echo ""
-echo "  # From another container:"
-echo "  redis-cli -h redis -p 6379 -a '<password>'"
-echo ""
-echo "  # Connection string:"
-echo "  redis://:<password>@redis:6379/0"
+log_info "Connection Information:"
+echo "  Host:     127.0.0.1 (localhost only)"
+echo "  Port:     6379"
+echo "  Password: $REDIS_PASSWORD"
 echo ""
 
+log_info "Configuration:"
+echo "  Config File:   $CONF_FILE"
+echo "  Data Dir:      $DATA_DIR"
+echo "  Log File:      $LOG_FILE"
+echo "  Service Name:  $SERVICE_NAME"
+echo ""
+
+log_info "Connection Examples:"
+cat <<'EXAMPLES'
+  # CLI with password:
+  redis-cli -a YOUR_PASSWORD
+  
+  # Test connection:
+  redis-cli -a YOUR_PASSWORD ping
+  
+  # Get info:
+  redis-cli -a YOUR_PASSWORD info
+  
+  # Monitor commands:
+  redis-cli -a YOUR_PASSWORD monitor
+  
+  # NodeJS connection:
+  const redis = require('redis');
+  const client = redis.createClient({
+      host: '127.0.0.1',
+      port: 6379,
+      password: 'YOUR_PASSWORD'
+  });
+  
+  # Python connection:
+  import redis
+  r = redis.Redis(
+      host='127.0.0.1',
+      port=6379,
+      password='YOUR_PASSWORD'
+  )
+EXAMPLES
+
+echo ""
 log_info "Useful commands:"
-echo "  docker logs redis            # View logs"
-echo "  docker exec -it redis redis-cli -a '<password>' # Access Redis CLI"
-echo "  docker stop redis            # Stop container"
-echo "  docker start redis           # Start container"
+echo "  sudo systemctl status $SERVICE_NAME    # Check status"
+echo "  sudo systemctl restart $SERVICE_NAME   # Restart"
+echo "  sudo systemctl stop $SERVICE_NAME      # Stop"
+echo "  redis-cli -a PASSWORD info            # Get info"
+echo "  redis-cli -a PASSWORD dbsize          # Get key count"
+echo "  sudo tail -f $LOG_FILE                # View logs"
 echo ""
 
-log_info "Redis CLI examples:"
-echo "  PING                         # Test connection"
-echo "  SET key value                # Set a key"
-echo "  GET key                      # Get a key"
-echo "  INFO                         # Server info"
-echo "  DBSIZE                       # Number of keys"
+log_info "Performance tuning:"
+echo "  • Adjust maxmemory in $CONF_FILE based on available RAM"
+echo "  • Monitor memory: redis-cli -a PASSWORD info memory"
+echo "  • Monitor stats: redis-cli -a PASSWORD info stats"
 echo ""
-cat <<'EXAMPLE'
-Example Implementation:
------------------------
 
-# Check dependencies
-require_dependency "infrastructure/docker-engine"
-
-# Manage credentials
-if ! has_credentials "$APP_NAME"; then
-    PASSWORD=$(generate_secure_password)
-    save_secret "$APP_NAME" "APP_PASSWORD" "$PASSWORD"
-fi
-load_secrets "$APP_NAME"
-
-# Deploy
-docker run -d \
-    --name $APP_NAME \
-    --restart unless-stopped \
-    --network vps_network \
-    -e PASSWORD="$APP_PASSWORD" \
-    -p 8080:8080 \
-    your-image:latest
-
-# Verify
-check_container_health "$APP_NAME"
-display_connection_info "$APP_NAME"
-
-EXAMPLE
-
+log_warn "Security Note:"
+echo "  • Redis is bound to localhost only (secure)"
+echo "  • Password authentication is enabled"
+echo "  • Credentials saved in: ~/.vps-secrets/.env_$APP_NAME"
+echo "  • To allow remote access, edit bind in $CONF_FILE"
 echo ""
+
+log_info "Backup commands:"
+echo "  # Manual backup:"
+echo "  redis-cli -a PASSWORD save"
+echo "  sudo cp $DATA_DIR/dump.rdb /backup/location/"
+echo ""
+echo "  # Scheduled backup with cron:"
+echo "  0 2 * * * redis-cli -a PASSWORD save && cp $DATA_DIR/dump.rdb /backup/redis-\$(date +\\%Y\\%m\\%d).rdb"
+echo ""
+
 read -p "Press Enter to continue..."

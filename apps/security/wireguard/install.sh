@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # ==============================================================================
-# WIREGUARD VPN SERVER
-# Modern, fast, and secure VPN with easy peer management
+# WIREGUARD VPN SERVER (NATIVE)
+# Modern, fast, and secure VPN with kernel-level performance
 # ==============================================================================
 
 set -euo pipefail
@@ -10,43 +10,32 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
-source "${SCRIPT_DIR}/lib/docker.sh"
 
 APP_NAME="wireguard"
-CONTAINER_NAME="wireguard"
-DATA_DIR="/opt/security/wireguard"
-NETWORK="vps_network"
+WG_CONF_DIR="/etc/wireguard"
+WG_INTERFACE="wg0"
+WG_PORT=51820
+WG_SUBNET="10.13.13.0/24"
+WG_SERVER_IP="10.13.13.1"
 
 log_info "═══════════════════════════════════════════"
-log_info "  Installing WireGuard VPN Server"
+log_info "  Installing WireGuard VPN Server (Native)"
 log_info "═══════════════════════════════════════════"
 echo ""
 
-# Check dependencies
-log_step "Step 1: Checking dependencies"
-if ! check_docker; then
-    log_error "Docker is not installed"
-    log_info "Please install Docker first: Infrastructure > Docker Engine"
-    exit 1
-fi
-log_success "Docker is available"
-
-# Check for qrencode
-if ! command -v qrencode &> /dev/null; then
-    log_warn "qrencode not installed - QR codes won't be generated"
-    log_info "Install with: apt install qrencode or yum install qrencode"
-else
-    log_success "qrencode available for QR code generation"
-fi
+# Detect OS
+log_step "Step 1: Detecting operating system"
+detect_os
+log_success "OS detected: $OS_TYPE"
+log_info "Package manager: $PACKAGE_MANAGER"
 echo ""
 
-# Check for existing installation
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "WireGuard is already installed"
-    if confirm_action "Reinstall?"; then
-        log_info "Removing existing installation..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+# Check if already installed
+if systemctl is-active --quiet wg-quick@$WG_INTERFACE 2>/dev/null; then
+    log_warn "WireGuard is already running"
+    if confirm_action "Reinstall/Reconfigure?"; then
+        log_info "Stopping existing configuration..."
+        run_sudo wg-quick down $WG_INTERFACE 2>/dev/null || true
     else
         log_info "Installation cancelled"
         exit 0
@@ -54,147 +43,235 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
 fi
 echo ""
 
-# Get server configuration
-log_step "Step 2: Configuring WireGuard server"
-SERVER_IP=$(hostname -I | awk '{print $1}')
+# Install WireGuard
+log_step "Step 2: Installing WireGuard"
+case "$PACKAGE_MANAGER" in
+    apt)
+        run_sudo apt-get update -qq
+        run_sudo apt-get install -y wireguard wireguard-tools qrencode
+        ;;
+    yum|dnf)
+        run_sudo $PACKAGE_MANAGER install -y epel-release
+        run_sudo $PACKAGE_MANAGER install -y wireguard-tools qrencode
+        ;;
+    *)
+        log_error "Unsupported package manager: $PACKAGE_MANAGER"
+        exit 1
+        ;;
+esac
+log_success "WireGuard installed"
+echo ""
 
+# Get server configuration
+log_step "Step 3: Configuring server parameters"
+
+SERVER_IP=$(hostname -I | awk '{print $1}')
 log_info "Server IP detected: $SERVER_IP"
+
 read -p "Enter server public IP/domain [$SERVER_IP]: " USER_SERVER_URL
 SERVER_URL="${USER_SERVER_URL:-$SERVER_IP}"
+
+read -p "WireGuard port [51820]: " USER_PORT
+WG_PORT="${USER_PORT:-51820}"
 
 read -p "Number of peers to create [3]: " USER_PEERS
 PEERS="${USER_PEERS:-3}"
 
-log_success "Server URL: $SERVER_URL"
-log_success "Creating $PEERS peer configurations"
+log_success "Configuration:"
+echo "  Server URL:  $SERVER_URL"
+echo "  Port:        $WG_PORT/UDP"
+echo "  Interface:   $WG_INTERFACE"
+echo "  Subnet:      $WG_SUBNET"
+echo "  Peers:       $PEERS"
 echo ""
 
-# Setup directories
-log_step "Step 3: Setting up directories"
-create_app_directory "$DATA_DIR"
-create_app_directory "$DATA_DIR/config"
-log_success "WireGuard directories created"
+# Enable IP forwarding
+log_step "Step 4: Enabling IP forwarding"
+run_sudo sysctl -w net.ipv4.ip_forward=1
+run_sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+# Make permanent
+if ! grep -q "^net.ipv4.ip_forward=1" /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv4.ip_forward=1" | run_sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+if ! grep -q "^net.ipv6.conf.all.forwarding=1" /etc/sysctl.conf 2>/dev/null; then
+    echo "net.ipv6.conf.all.forwarding=1" | run_sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+
+log_success "IP forwarding enabled"
 echo ""
 
-# Create Docker network
-log_step "Step 4: Creating Docker network"
-create_docker_network "$NETWORK"
+# Generate server keys
+log_step "Step 5: Generating server keys"
+run_sudo mkdir -p "$WG_CONF_DIR/keys"
+run_sudo chmod 700 "$WG_CONF_DIR/keys"
+
+SERVER_PRIVATE_KEY=$(wg genkey)
+SERVER_PUBLIC_KEY=$(echo "$SERVER_PRIVATE_KEY" | wg pubkey)
+
+echo "$SERVER_PRIVATE_KEY" | run_sudo tee "$WG_CONF_DIR/keys/server_private.key" > /dev/null
+echo "$SERVER_PUBLIC_KEY" | run_sudo tee "$WG_CONF_DIR/keys/server_public.key" > /dev/null
+run_sudo chmod 600 "$WG_CONF_DIR/keys/server_private.key"
+
+log_success "Server keys generated"
 echo ""
 
-# Deploy WireGuard container
-log_step "Step 5: Deploying WireGuard VPN server"
-log_info "This requires elevated privileges for networking..."
+# Create server configuration
+log_step "Step 6: Creating server configuration"
 
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    --network "$NETWORK" \
-    --cap-add=NET_ADMIN \
-    --cap-add=SYS_MODULE \
-    --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
-    -e PUID=1000 \
-    -e PGID=1000 \
-    -e TZ=Europe/Bucharest \
-    -e SERVERURL="$SERVER_URL" \
-    -e SERVERPORT=51820 \
-    -e PEERS="$PEERS" \
-    -e PEERDNS=auto \
-    -e INTERNAL_SUBNET=10.13.13.0 \
-    -e ALLOWEDIPS=0.0.0.0/0 \
-    -e LOG_CONFS=true \
-    -v "$DATA_DIR/config:/config" \
-    -v /lib/modules:/lib/modules:ro \
-    -p 51820:51820/udp \
-    linuxserver/wireguard:latest
+# Detect default network interface
+DEFAULT_IF=$(ip route | grep default | awk '{print $5}' | head -1)
 
-if [ $? -ne 0 ]; then
-    log_error "Failed to deploy WireGuard"
+run_sudo tee "$WG_CONF_DIR/$WG_INTERFACE.conf" > /dev/null <<EOF
+[Interface]
+Address = $WG_SERVER_IP/24
+ListenPort = $WG_PORT
+PrivateKey = $SERVER_PRIVATE_KEY
+
+# NAT and forwarding rules
+PostUp = iptables -A FORWARD -i $WG_INTERFACE -j ACCEPT; iptables -t nat -A POSTROUTING -o $DEFAULT_IF -j MASQUERADE
+PostDown = iptables -D FORWARD -i $WG_INTERFACE -j ACCEPT; iptables -t nat -D POSTROUTING -o $DEFAULT_IF -j MASQUERADE
+
+# IPv6
+PostUp = ip6tables -A FORWARD -i $WG_INTERFACE -j ACCEPT; ip6tables -t nat -A POSTROUTING -o $DEFAULT_IF -j MASQUERADE
+PostDown = ip6tables -D FORWARD -i $WG_INTERFACE -j ACCEPT; ip6tables -t nat -D POSTROUTING -o $DEFAULT_IF -j MASQUERADE
+
+EOF
+
+run_sudo chmod 600 "$WG_CONF_DIR/$WG_INTERFACE.conf"
+log_success "Server configuration created"
+echo ""
+
+# Generate peer configurations
+log_step "Step 7: Generating peer configurations ($PEERS peers)"
+
+run_sudo mkdir -p "$WG_CONF_DIR/peers"
+run_sudo mkdir -p "$WG_CONF_DIR/clients"
+
+for i in $(seq 1 $PEERS); do
+    PEER_NAME="peer$i"
+    PEER_IP="10.13.13.$((i + 1))"
+    
+    # Generate peer keys
+    PEER_PRIVATE_KEY=$(wg genkey)
+    PEER_PUBLIC_KEY=$(echo "$PEER_PRIVATE_KEY" | wg pubkey)
+    PEER_PRESHARED_KEY=$(wg genpsk)
+    
+    # Save peer keys
+    echo "$PEER_PRIVATE_KEY" | run_sudo tee "$WG_CONF_DIR/keys/${PEER_NAME}_private.key" > /dev/null
+    echo "$PEER_PUBLIC_KEY" | run_sudo tee "$WG_CONF_DIR/keys/${PEER_NAME}_public.key" > /dev/null
+    echo "$PEER_PRESHARED_KEY" | run_sudo tee "$WG_CONF_DIR/keys/${PEER_NAME}_preshared.key" > /dev/null
+    
+    # Add peer to server config
+    run_sudo tee -a "$WG_CONF_DIR/$WG_INTERFACE.conf" > /dev/null <<EOF
+
+# $PEER_NAME
+[Peer]
+PublicKey = $PEER_PUBLIC_KEY
+PresharedKey = $PEER_PRESHARED_KEY
+AllowedIPs = $PEER_IP/32
+
+EOF
+    
+    # Create client configuration
+    run_sudo tee "$WG_CONF_DIR/clients/${PEER_NAME}.conf" > /dev/null <<EOF
+[Interface]
+PrivateKey = $PEER_PRIVATE_KEY
+Address = $PEER_IP/24
+DNS = 1.1.1.1, 1.0.0.1
+
+[Peer]
+PublicKey = $SERVER_PUBLIC_KEY
+PresharedKey = $PEER_PRESHARED_KEY
+Endpoint = $SERVER_URL:$WG_PORT
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25
+EOF
+    
+    # Generate QR code
+    run_sudo qrencode -t PNG -o "$WG_CONF_DIR/clients/${PEER_NAME}.png" < "$WG_CONF_DIR/clients/${PEER_NAME}.conf"
+    
+    log_info "  ✓ $PEER_NAME configured ($PEER_IP)"
+done
+
+run_sudo chmod 600 "$WG_CONF_DIR/keys/"*
+run_sudo chmod 644 "$WG_CONF_DIR/clients/"*
+
+log_success "All peer configurations created"
+echo ""
+
+# Start WireGuard
+log_step "Step 8: Starting WireGuard service"
+run_sudo systemctl enable wg-quick@$WG_INTERFACE
+run_sudo wg-quick up $WG_INTERFACE
+
+if systemctl is-active --quiet wg-quick@$WG_INTERFACE; then
+    log_success "WireGuard is running"
+else
+    log_error "Failed to start WireGuard"
     exit 1
 fi
-log_success "Container deployed"
 echo ""
 
-# Wait for configuration generation
-log_step "Step 6: Waiting for peer configurations"
-log_info "Generating peer configurations and keys..."
-sleep 15
-
-RETRIES=30
-COUNT=0
-while [ $COUNT -lt $RETRIES ]; do
-    if [ -f "$DATA_DIR/config/peer1/peer1.conf" ]; then
-        log_success "Peer configurations ready!"
-        break
-    fi
-    COUNT=$((COUNT + 1))
-    if [ $COUNT -eq $RETRIES ]; then
-        log_error "Peer configuration generation timeout"
-        docker logs $CONTAINER_NAME --tail 50
-        exit 1
-    fi
-    sleep 2
-done
-echo ""
-
-# Create peer management script
-log_step "Step 7: Creating peer management script"
-cat > "$DATA_DIR/manage-peers.sh" << 'EOFSCRIPT'
+# Create management script
+log_step "Step 9: Creating management script"
+run_sudo tee /usr/local/bin/wg-manage > /dev/null <<'EOFSCRIPT'
 #!/bin/bash
 set -e
 
-CONFIG_DIR="/opt/security/wireguard/config"
+WG_IF="wg0"
+WG_DIR="/etc/wireguard"
 
 case "$1" in
+    status)
+        echo "WireGuard Status:"
+        wg show $WG_IF
+        ;;
     list)
-        echo "WireGuard Peers:"
-        for peer in "$CONFIG_DIR"/peer*/peer*.conf; do
-            [ -f "$peer" ] && basename "$(dirname "$peer")"
-        done
+        echo "Available peer configurations:"
+        ls -1 $WG_DIR/clients/*.conf 2>/dev/null | xargs -n1 basename | sed 's/.conf$//' || echo "No peers found"
         ;;
     show)
-        [ -z "$2" ] && echo "Usage: $0 show <peer_number>" && exit 1
-        PEER="peer$2"
-        if [ -f "$CONFIG_DIR/$PEER/$PEER.conf" ]; then
-            echo "Configuration for $PEER:"
-            cat "$CONFIG_DIR/$PEER/$PEER.conf"
-            echo ""
-            if [ -f "$CONFIG_DIR/$PEER/$PEER.png" ]; then
-                echo "QR Code: $CONFIG_DIR/$PEER/$PEER.png"
-            fi
+        [ -z "$2" ] && echo "Usage: wg-manage show <peer_name>" && exit 1
+        if [ -f "$WG_DIR/clients/$2.conf" ]; then
+            echo "Configuration for $2:"
+            cat "$WG_DIR/clients/$2.conf"
         else
             echo "Peer $2 not found"
             exit 1
         fi
         ;;
     qr)
-        [ -z "$2" ] && echo "Usage: $0 qr <peer_number>" && exit 1
-        PEER="peer$2"
-        if [ -f "$CONFIG_DIR/$PEER/$PEER.conf" ]; then
-            if command -v qrencode &> /dev/null; then
-                qrencode -t ansiutf8 < "$CONFIG_DIR/$PEER/$PEER.conf"
-            else
-                echo "qrencode not installed"
-                echo "Install: apt install qrencode"
-            fi
+        [ -z "$2" ] && echo "Usage: wg-manage qr <peer_name>" && exit 1
+        if [ -f "$WG_DIR/clients/$2.conf" ]; then
+            qrencode -t ansiutf8 < "$WG_DIR/clients/$2.conf"
         else
             echo "Peer $2 not found"
             exit 1
         fi
         ;;
+    restart)
+        echo "Restarting WireGuard..."
+        wg-quick down $WG_IF 2>/dev/null || true
+        wg-quick up $WG_IF
+        echo "✓ WireGuard restarted"
+        ;;
     *)
-        echo "WireGuard Peer Management"
-        echo "Usage: $0 {list|show|qr} [peer_number]"
+        echo "WireGuard Management Tool"
+        echo "Usage: wg-manage {status|list|show|qr|restart} [peer_name]"
         echo ""
         echo "Commands:"
-        echo "  list         - List all peers"
-        echo "  show <N>     - Show peer N configuration"
-        echo "  qr <N>       - Display QR code for peer N"
+        echo "  status          - Show WireGuard status"
+        echo "  list            - List all peers"
+        echo "  show <name>     - Show peer configuration"
+        echo "  qr <name>       - Display QR code for peer"
+        echo "  restart         - Restart WireGuard"
         ;;
 esac
 EOFSCRIPT
 
-chmod +x "$DATA_DIR/manage-peers.sh"
-log_success "Peer management script created"
+run_sudo chmod +x /usr/local/bin/wg-manage
+log_success "Management script created"
 echo ""
 
 # Display installation summary
@@ -205,65 +282,70 @@ echo ""
 
 log_info "🌐 Server details:"
 echo "  Server URL:   $SERVER_URL"
-echo "  Server Port:  51820/UDP"
-echo "  VPN Subnet:   10.13.13.0/24"
+echo "  Server Port:  $WG_PORT/UDP"
+echo "  VPN Subnet:   $WG_SUBNET"
+echo "  Interface:    $WG_INTERFACE"
 echo "  Peers:        $PEERS"
 echo ""
 
 log_info "📁 Configuration files:"
-echo "  Location: $DATA_DIR/config/"
-for i in $(seq 1 $PEERS); do
-    echo "  peer$i:   $DATA_DIR/config/peer$i/peer$i.conf"
-    [ -f "$DATA_DIR/config/peer$i/peer$i.png" ] && echo "           $DATA_DIR/config/peer$i/peer$i.png (QR)"
-done
+echo "  Server config:     $WG_CONF_DIR/$WG_INTERFACE.conf"
+echo "  Client configs:    $WG_CONF_DIR/clients/*.conf"
+echo "  QR codes:          $WG_CONF_DIR/clients/*.png"
+echo "  Keys:              $WG_CONF_DIR/keys/"
 echo ""
 
 log_info "🔧 Peer management:"
-echo "  List peers:        sudo $DATA_DIR/manage-peers.sh list"
-echo "  Show config:       sudo $DATA_DIR/manage-peers.sh show <N>"
-echo "  Display QR code:   sudo $DATA_DIR/manage-peers.sh qr <N>"
-echo ""
-
-log_info "📦 Docker management:"
-echo "  View logs:    docker logs $CONTAINER_NAME -f"
-echo "  Restart:      docker restart $CONTAINER_NAME"
-echo "  Stop:         docker stop $CONTAINER_NAME"
-echo "  Remove:       docker rm -f $CONTAINER_NAME"
+echo "  List peers:        sudo wg-manage list"
+echo "  Show config:       sudo wg-manage show peer1"
+echo "  Display QR:        sudo wg-manage qr peer1"
+echo "  Show status:       sudo wg-manage status"
+echo "  Restart:           sudo wg-manage restart"
 echo ""
 
 log_info "📱 Client setup:"
-echo "  1. Install WireGuard client on device:"
+echo "  1. Install WireGuard client:"
 echo "     - Android/iOS: WireGuard app from store"
 echo "     - Windows/Mac/Linux: https://www.wireguard.com/install/"
 echo ""
 echo "  2. Import configuration:"
-echo "     - Scan QR code from peer*.png files"
-echo "     - Or copy peer*.conf manually"
+echo "     - Scan QR code: sudo wg-manage qr peer1"
+echo "     - Or copy from: $WG_CONF_DIR/clients/peer1.conf"
 echo ""
 echo "  3. Activate connection in WireGuard client"
 echo ""
 
+log_info "🔍 Useful commands:"
+echo "  sudo wg                                # Show status"
+echo "  sudo wg show $WG_INTERFACE             # Detailed status"
+echo "  sudo systemctl status wg-quick@$WG_INTERFACE  # Service status"
+echo "  sudo systemctl restart wg-quick@$WG_INTERFACE # Restart"
+echo "  sudo wg-quick down $WG_INTERFACE      # Stop"
+echo "  sudo wg-quick up $WG_INTERFACE        # Start"
+echo "  sudo journalctl -u wg-quick@$WG_INTERFACE -f  # View logs"
+echo ""
+
 log_warn "⚠️  Important notes:"
-echo "  • Port 51820/UDP must be open in firewall"
-echo "  • Enable IP forwarding (already configured by container)"
-echo "  • Each peer has unique keys - never share between devices"
+echo "  • Port $WG_PORT/UDP must be open in firewall"
+echo "  • Run: sudo ufw allow $WG_PORT/udp"
+echo "  • Each peer has unique keys - never share"
+echo "  • Backup $WG_CONF_DIR directory regularly"
 echo "  • Configuration files contain private keys - keep secure"
-echo "  • To add more peers, recreate container with higher PEERS value"
 echo ""
 
 log_info "🔥 Firewall configuration:"
-echo "  UFW:      sudo ufw allow 51820/udp"
-echo "  firewalld: sudo firewall-cmd --add-port=51820/udp --permanent"
-echo "  iptables: sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT"
+echo "  UFW:       sudo ufw allow $WG_PORT/udp"
+echo "  firewalld: sudo firewall-cmd --add-port=$WG_PORT/udp --permanent && sudo firewall-cmd --reload"
+echo "  iptables:  sudo iptables -A INPUT -p udp --dport $WG_PORT -j ACCEPT"
 echo ""
 
 log_info "💡 Next steps:"
-echo "  1. Ensure firewall allows UDP port 51820"
-echo "  2. List available peers: sudo $DATA_DIR/manage-peers.sh list"
-echo "  3. View peer configuration or QR code"
-echo "  4. Install WireGuard client on devices"
-echo "  5. Import configuration and connect"
-echo "  6. Test connection: ping 10.13.13.1"
+echo "  1. Configure firewall: sudo ufw allow $WG_PORT/udp"
+echo "  2. List peers: sudo wg-manage list"
+echo "  3. Get QR code: sudo wg-manage qr peer1"
+echo "  4. Install WireGuard app on devices"
+echo "  5. Scan QR code or import configuration"
+echo "  6. Connect and test: ping $WG_SERVER_IP"
 echo ""
 
 read -p "Press Enter to continue..."

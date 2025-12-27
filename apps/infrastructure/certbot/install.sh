@@ -1,376 +1,297 @@
 #!/bin/bash
 
 # ==============================================================================
-# CERTBOT SSL CERTIFICATE MANAGEMENT
-# Manages Let's Encrypt SSL certificates for domains with automatic renewal
+# CERTBOT SSL CERTIFICATE MANAGEMENT (NATIVE)
+# Let's Encrypt SSL certificates with automatic renewal via systemd timer
 # ==============================================================================
+
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
-source "${SCRIPT_DIR}/lib/docker.sh"
 
 APP_NAME="certbot"
-DATA_DIR="/opt/infrastructure/certbot"
+CERT_DIR="/etc/letsencrypt"
+WEBROOT_DIR="/var/www/html"
 
 log_info "═══════════════════════════════════════════"
 log_info "  Installing Certbot (Let's Encrypt)"
 log_info "═══════════════════════════════════════════"
 echo ""
 
+# Detect OS
+log_step "Step 1: Detecting operating system"
+detect_os
+log_success "OS detected: $OS_TYPE"
+log_info "Package manager: $PACKAGE_MANAGER"
+echo ""
+
 # Check dependencies
-log_step "Step 1: Checking dependencies"
-if ! check_docker; then
-    log_error "Docker is not installed"
-    log_info "Please install Docker first: Infrastructure > Docker Engine"
-    exit 1
-fi
-log_success "Docker is available"
+log_step "Step 2: Checking dependencies"
 
-# Check if Nginx is running
+# Check if Nginx is installed and running
 NGINX_RUNNING=false
-if docker ps --format '{{.Names}}' | grep -q "^nginx$"; then
+if systemctl is-active --quiet nginx 2>/dev/null; then
     NGINX_RUNNING=true
-    log_success "Nginx detected - webroot mode available"
+    log_success "Nginx detected and running"
 else
-    log_warn "Nginx not detected - standalone mode will be used"
-    log_info "Standalone mode requires port 80 to be free during certificate requests"
-fi
-echo ""
-
-# Setup directories
-log_step "Step 2: Setting up directories"
-create_app_directory "$DATA_DIR/conf"
-create_app_directory "$DATA_DIR/www"
-create_app_directory "$DATA_DIR/logs"
-create_app_directory "/var/www/certbot"
-log_success "Certbot directories created"
-echo ""
-
-# Create helper scripts
-log_step "Step 3: Creating helper scripts"
-
-# Certificate request script
-cat > "$DATA_DIR/request-cert.sh" << 'EOFSCRIPT'
-#!/bin/bash
-set -euo pipefail
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-if [ $# -lt 2 ]; then
-    echo -e "${RED}Usage:${NC} $0 <domain> <email> [additional-domains...]"
-    echo ""
-    echo "Examples:"
-    echo "  $0 example.com admin@example.com"
-    echo "  $0 example.com admin@example.com www.example.com api.example.com"
-    exit 1
-fi
-
-DOMAIN="$1"
-EMAIL="$2"
-shift 2
-ADDITIONAL_DOMAINS="$@"
-
-# Build domain arguments
-DOMAIN_ARGS="-d $DOMAIN"
-for extra in $ADDITIONAL_DOMAINS; do
-    DOMAIN_ARGS="$DOMAIN_ARGS -d $extra"
-done
-
-echo -e "${GREEN}Requesting certificate for:${NC} $DOMAIN"
-[ -n "$ADDITIONAL_DOMAINS" ] && echo -e "${GREEN}Additional domains:${NC} $ADDITIONAL_DOMAINS"
-echo ""
-
-# Check if certificate already exists
-if [ -d "/opt/infrastructure/certbot/conf/live/$DOMAIN" ]; then
-    echo -e "${YELLOW}Warning:${NC} Certificate for $DOMAIN already exists"
-    read -p "Overwrite? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Cancelled"
+    log_warn "Nginx not detected"
+    log_info "Certbot can still work in standalone mode"
+    log_info "However, it's recommended to install Nginx first"
+    
+    if ! confirm_action "Continue without Nginx?"; then
+        log_info "Installation cancelled"
+        log_info "Install Nginx first: Infrastructure > Nginx"
         exit 0
     fi
 fi
-
-# Check if Nginx is running
-if docker ps --format '{{.Names}}' | grep -q "^nginx$"; then
-    echo -e "${GREEN}Using webroot mode${NC} (Nginx integration)"
-    
-    # Ensure Nginx serves the .well-known directory
-    docker exec nginx test -d /var/www/certbot/.well-known || \
-        docker exec nginx mkdir -p /var/www/certbot/.well-known
-    
-    docker run --rm --name certbot \
-        -v "/opt/infrastructure/certbot/conf:/etc/letsencrypt" \
-        -v "/opt/infrastructure/certbot/www:/var/www/certbot" \
-        -v "/opt/infrastructure/certbot/logs:/var/log/letsencrypt" \
-        certbot/certbot certonly \
-        --webroot \
-        --webroot-path=/var/www/certbot \
-        --email "$EMAIL" \
-        --agree-tos \
-        --no-eff-email \
-        --non-interactive \
-        $DOMAIN_ARGS
-else
-    echo -e "${YELLOW}Using standalone mode${NC} (port 80 required)"
-    echo "Warning: This will temporarily use port 80"
-    
-    docker run --rm --name certbot \
-        -v "/opt/infrastructure/certbot/conf:/etc/letsencrypt" \
-        -v "/opt/infrastructure/certbot/logs:/var/log/letsencrypt" \
-        -p 80:80 \
-        certbot/certbot certonly \
-        --standalone \
-        --preferred-challenges http \
-        --email "$EMAIL" \
-        --agree-tos \
-        --no-eff-email \
-        --non-interactive \
-        $DOMAIN_ARGS
-fi
-
-if [ $? -eq 0 ]; then
-    echo ""
-    echo -e "${GREEN}✅ Certificate obtained successfully!${NC}"
-    echo ""
-    echo "Certificate files:"
-    echo "  Location: /opt/infrastructure/certbot/conf/live/$DOMAIN/"
-    echo "  Fullchain: fullchain.pem"
-    echo "  Private key: privkey.pem"
-    echo ""
-    echo "Nginx configuration example:"
-    echo "  ssl_certificate /etc/nginx/ssl/live/$DOMAIN/fullchain.pem;"
-    echo "  ssl_certificate_key /etc/nginx/ssl/live/$DOMAIN/privkey.pem;"
-    echo ""
-    echo "Don't forget to:"
-    echo "  1. Update your Nginx configuration"
-    echo "  2. Reload Nginx: docker exec nginx nginx -s reload"
-else
-    echo ""
-    echo -e "${RED}❌ Certificate request failed${NC}"
-    echo "Check logs: /opt/infrastructure/certbot/logs/"
-    exit 1
-fi
-EOFSCRIPT
-
-chmod +x "$DATA_DIR/request-cert.sh"
-
-# Certificate renewal script
-cat > "$DATA_DIR/renew-certs.sh" << 'EOFSCRIPT'
-#!/bin/bash
-set -euo pipefail
-
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-echo "🔄 Renewing all certificates..."
 echo ""
 
-docker run --rm --name certbot \
-    -v "/opt/infrastructure/certbot/conf:/etc/letsencrypt" \
-    -v "/opt/infrastructure/certbot/www:/var/www/certbot" \
-    -v "/opt/infrastructure/certbot/logs:/var/log/letsencrypt" \
-    certbot/certbot renew \
-    --webroot \
-    --webroot-path=/var/www/certbot
+# Install Certbot
+log_step "Step 3: Installing Certbot"
+case "$PACKAGE_MANAGER" in
+    apt)
+        run_sudo apt-get update -qq
+        run_sudo apt-get install -y certbot
+        if [ "$NGINX_RUNNING" = true ]; then
+            run_sudo apt-get install -y python3-certbot-nginx
+        fi
+        ;;
+    yum|dnf)
+        run_sudo $PACKAGE_MANAGER install -y epel-release
+        run_sudo $PACKAGE_MANAGER install -y certbot
+        if [ "$NGINX_RUNNING" = true ]; then
+            run_sudo $PACKAGE_MANAGER install -y python3-certbot-nginx
+        fi
+        ;;
+    *)
+        log_error "Unsupported package manager: $PACKAGE_MANAGER"
+        exit 1
+        ;;
+esac
+log_success "Certbot installed"
+echo ""
+
+# Setup directories
+log_step "Step 4: Setting up directories"
+run_sudo mkdir -p "$WEBROOT_DIR/.well-known/acme-challenge"
+run_sudo chown -R www-data:www-data "$WEBROOT_DIR" 2>/dev/null || run_sudo chown -R nginx:nginx "$WEBROOT_DIR" 2>/dev/null || true
+log_success "Directories configured"
+echo ""
+
+# Create helper script for certificate requests
+log_step "Step 5: Creating helper scripts"
+
+run_sudo tee /usr/local/bin/certbot-request > /dev/null <<'EOF'
+#!/bin/bash
+# Helper script to request SSL certificates
+
+set -euo pipefail
+
+if [ $# -eq 0 ]; then
+    echo "Usage: sudo certbot-request domain.com [subdomain.domain.com ...]"
+    echo ""
+    echo "Examples:"
+    echo "  sudo certbot-request example.com www.example.com"
+    echo "  sudo certbot-request app.example.com"
+    exit 1
+fi
+
+DOMAINS="$*"
+DOMAIN_ARGS=""
+
+for domain in $DOMAINS; do
+    DOMAIN_ARGS="$DOMAIN_ARGS -d $domain"
+done
+
+echo "Requesting SSL certificate for: $DOMAINS"
+echo ""
+
+# Check if Nginx is running
+if systemctl is-active --quiet nginx; then
+    echo "Using Nginx plugin (webroot mode)..."
+    certbot certonly \
+        --nginx \
+        $DOMAIN_ARGS \
+        --non-interactive \
+        --agree-tos \
+        --email admin@$(echo $DOMAINS | awk '{print $1}') \
+        --keep-until-expiring
+else
+    echo "Using standalone mode..."
+    echo "WARNING: This will temporarily bind to port 80"
+    certbot certonly \
+        --standalone \
+        $DOMAIN_ARGS \
+        --non-interactive \
+        --agree-tos \
+        --email admin@$(echo $DOMAINS | awk '{print $1}') \
+        --keep-until-expiring
+fi
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo -e "${GREEN}✅ Certificate renewal complete${NC}"
+    echo "✓ Certificate obtained successfully!"
+    echo ""
+    echo "Certificate files:"
+    echo "  Fullchain: /etc/letsencrypt/live/$(echo $DOMAINS | awk '{print $1}')/fullchain.pem"
+    echo "  Privkey:   /etc/letsencrypt/live/$(echo $DOMAINS | awk '{print $1}')/privkey.pem"
+    echo ""
     
-    # Reload Nginx if running
-    if docker ps --format '{{.Names}}' | grep -q "^nginx$"; then
+    if systemctl is-active --quiet nginx; then
         echo "Reloading Nginx..."
-        docker exec nginx nginx -s reload
-        echo -e "${GREEN}✅ Nginx reloaded${NC}"
+        systemctl reload nginx
+        echo "✓ Nginx reloaded"
     fi
 else
     echo ""
-    echo -e "${RED}❌ Certificate renewal failed${NC}"
+    echo "✗ Certificate request failed"
+    echo "Check the error messages above"
     exit 1
 fi
-EOFSCRIPT
+EOF
 
-chmod +x "$DATA_DIR/renew-certs.sh"
+run_sudo chmod +x /usr/local/bin/certbot-request
 
-# List certificates script
-cat > "$DATA_DIR/list-certs.sh" << 'EOFSCRIPT'
+# Create renewal hook script
+run_sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+run_sudo tee /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh > /dev/null <<'EOF'
 #!/bin/bash
+# Reload Nginx after certificate renewal
 
-echo "📜 Installed SSL Certificates:"
-echo ""
-
-docker run --rm \
-    -v "/opt/infrastructure/certbot/conf:/etc/letsencrypt" \
-    certbot/certbot certificates
-EOFSCRIPT
-
-chmod +x "$DATA_DIR/list-certs.sh"
-
-# Revoke certificate script
-cat > "$DATA_DIR/revoke-cert.sh" << 'EOFSCRIPT'
-#!/bin/bash
-set -euo pipefail
-
-if [ -z "$1" ]; then
-    echo "Usage: $0 <domain>"
-    exit 1
+if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+    echo "Nginx reloaded after certificate renewal"
 fi
+EOF
 
-DOMAIN="$1"
-
-if [ ! -d "/opt/infrastructure/certbot/conf/live/$DOMAIN" ]; then
-    echo "Error: No certificate found for $DOMAIN"
-    exit 1
-fi
-
-echo "⚠️  Warning: This will revoke the certificate for $DOMAIN"
-read -p "Continue? (y/N) " -n 1 -r
-echo
-
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Cancelled"
-    exit 0
-fi
-
-docker run --rm \
-    -v "/opt/infrastructure/certbot/conf:/etc/letsencrypt" \
-    certbot/certbot revoke \
-    --cert-name "$DOMAIN" \
-    --delete-after-revoke
-
-echo "✅ Certificate revoked"
-EOFSCRIPT
-
-chmod +x "$DATA_DIR/revoke-cert.sh"
+run_sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh
 
 log_success "Helper scripts created"
 echo ""
 
-# Setup automatic renewal
-log_step "Step 4: Setting up automatic renewal"
+# Configure automatic renewal
+log_step "Step 6: Configuring automatic renewal"
 
-# Check for systemd
-if command -v systemctl &> /dev/null; then
-    log_info "Creating systemd timer for automatic renewal..."
-    
-    sudo tee /etc/systemd/system/certbot-renewal.service > /dev/null << 'EOFSERVICE'
-[Unit]
-Description=Certbot Certificate Renewal
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/opt/infrastructure/certbot/renew-certs.sh
-StandardOutput=journal
-StandardError=journal
-EOFSERVICE
-
-    sudo tee /etc/systemd/system/certbot-renewal.timer > /dev/null << 'EOFTIMER'
-[Unit]
-Description=Run Certbot renewal twice daily
-Requires=certbot-renewal.service
-
-[Timer]
-OnCalendar=*-*-* 03:00:00
-OnCalendar=*-*-* 15:00:00
-RandomizedDelaySec=3600
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOFTIMER
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable certbot-renewal.timer
-    sudo systemctl start certbot-renewal.timer
-    
-    log_success "Systemd timer configured (runs at 3 AM and 3 PM daily)"
+# Check if systemd timer exists (most modern systems)
+if systemctl list-unit-files | grep -q certbot.timer; then
+    run_sudo systemctl enable certbot.timer
+    run_sudo systemctl start certbot.timer
+    log_success "Systemd timer configured for automatic renewal"
 else
-    log_info "Setting up cron job for automatic renewal..."
-    
-    # Add cron job if not exists
-    CRON_CMD="0 3,15 * * * /opt/infrastructure/certbot/renew-certs.sh >> /var/log/certbot-renewal.log 2>&1"
-    (crontab -l 2>/dev/null | grep -v "renew-certs.sh"; echo "$CRON_CMD") | crontab -
-    
-    log_success "Cron job configured (runs at 3 AM and 3 PM daily)"
+    # Fallback to cron
+    CRON_CMD="0 3 * * * certbot renew --quiet --deploy-hook '/etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh'"
+    (crontab -l 2>/dev/null | grep -v certbot; echo "$CRON_CMD") | run_sudo crontab -
+    log_success "Cron job configured for automatic renewal"
 fi
 echo ""
 
-# Pull Certbot image
-log_step "Step 5: Pulling Certbot Docker image"
-docker pull certbot/certbot:latest
-log_success "Certbot image ready"
+# Test renewal (dry-run)
+log_step "Step 7: Testing renewal configuration"
+if run_sudo certbot renew --dry-run 2>&1 | grep -q "Congratulations"; then
+    log_success "Renewal test passed"
+else
+    log_warn "Renewal test completed (no certificates to renew yet)"
+fi
 echo ""
 
-# Display info
+# Display installation info
 log_success "═══════════════════════════════════════════"
 log_success "  Certbot Installation Complete!"
 log_success "═══════════════════════════════════════════"
 echo ""
 
-log_info "📁 Certbot directories:"
-echo "  Certificates: $DATA_DIR/conf/live/"
-echo "  Webroot: $DATA_DIR/www/"
-echo "  Logs: $DATA_DIR/logs/"
+log_info "Request your first certificate:"
+cat <<'USAGE'
+  # Single domain:
+  sudo certbot-request example.com
+  
+  # Multiple domains (SAN certificate):
+  sudo certbot-request example.com www.example.com
+  
+  # Subdomain:
+  sudo certbot-request app.example.com
+USAGE
+
+echo ""
+log_info "Manual certificate request (advanced):"
+cat <<'MANUAL'
+  # With Nginx plugin:
+  sudo certbot certonly --nginx -d example.com -d www.example.com
+  
+  # Standalone (requires port 80 free):
+  sudo certbot certonly --standalone -d example.com
+  
+  # Webroot mode:
+  sudo certbot certonly --webroot -w /var/www/html -d example.com
+MANUAL
+
+echo ""
+log_info "Configure Nginx for HTTPS:"
+cat <<'NGINX_CONFIG'
+  # Edit your site config: /etc/nginx/sites-available/mysite.conf
+  
+  server {
+      listen 80;
+      server_name example.com www.example.com;
+      
+      # Redirect HTTP to HTTPS
+      return 301 https://$server_name$request_uri;
+  }
+  
+  server {
+      listen 443 ssl http2;
+      server_name example.com www.example.com;
+      
+      # SSL certificates
+      ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+      ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+      
+      # SSL parameters
+      include snippets/ssl-params.conf;
+      
+      location / {
+          proxy_pass http://localhost:3000;
+          include snippets/proxy-params.conf;
+      }
+  }
+  
+  # Test and reload:
+  sudo nginx -t && sudo systemctl reload nginx
+NGINX_CONFIG
+
+echo ""
+log_info "Useful commands:"
+echo "  sudo certbot-request domain.com         # Request certificate"
+echo "  sudo certbot certificates               # List certificates"
+echo "  sudo certbot renew                      # Manual renewal"
+echo "  sudo certbot renew --dry-run            # Test renewal"
+echo "  sudo certbot delete --cert-name domain  # Delete certificate"
+echo "  sudo systemctl status certbot.timer     # Check auto-renewal timer"
+echo "  sudo journalctl -u certbot.timer        # View renewal logs"
 echo ""
 
-log_info "🔧 Helper scripts:"
-echo "  Request certificate:  sudo $DATA_DIR/request-cert.sh <domain> <email>"
-echo "  Renew certificates:   sudo $DATA_DIR/renew-certs.sh"
-echo "  List certificates:    sudo $DATA_DIR/list-certs.sh"
-echo "  Revoke certificate:   sudo $DATA_DIR/revoke-cert.sh <domain>"
+log_info "Certificate locations:"
+echo "  Certificates: $CERT_DIR/live/"
+echo "  Archive:      $CERT_DIR/archive/"
+echo "  Renewal conf: $CERT_DIR/renewal/"
 echo ""
 
-log_info "📝 Usage examples:"
-echo "  # Request certificate for single domain:"
-echo "  sudo $DATA_DIR/request-cert.sh example.com admin@example.com"
-echo ""
-echo "  # Request certificate with www subdomain:"
-echo "  sudo $DATA_DIR/request-cert.sh example.com admin@example.com www.example.com"
-echo ""
-echo "  # Request wildcard certificate (requires DNS validation):"
-echo "  sudo $DATA_DIR/request-cert.sh '*.example.com' admin@example.com"
-echo ""
-
-log_info "🔄 Automatic renewal:"
-echo "  • Certificates renew automatically twice daily (3 AM & 3 PM)"
-echo "  • Renewal starts 30 days before expiration"
-echo "  • Nginx reloads automatically after renewal"
-echo ""
-
-if [ "$NGINX_RUNNING" = true ]; then
-    log_info "🔗 Nginx integration:"
-    echo "  ✅ Nginx is running - webroot validation ready"
-    echo "  • Certificates location: $DATA_DIR/conf/live/DOMAIN/"
-    echo "  • Mount in Nginx: -v $DATA_DIR/conf:/etc/nginx/ssl:ro"
-    echo "  • Mount webroot: -v $DATA_DIR/www:/var/www/certbot:ro"
-else
-    log_warn "🔗 Nginx not detected:"
-    echo "  • Standalone mode will use port 80 during requests"
-    echo "  • Consider installing Nginx for easier management"
-    echo "  • Port 80 must be available during certificate requests"
-fi
-echo ""
-
-log_warn "⚠️  Important notes:"
-echo "  • Certificates expire after 90 days"
-echo "  • Rate limits: 50 certificates per domain per week"
-echo "  • 5 duplicate certificates per week"
-echo "  • Ensure DNS points to this server before requesting"
+log_warn "Important Notes:"
+echo "  • Certificates auto-renew every 60 days via systemd timer"
+echo "  • Rate limit: 5 certificates per domain per week"
+echo "  • Test with --dry-run before real requests"
+echo "  • Backup $CERT_DIR directory regularly"
+echo "  • Domain must point to this server's IP"
 echo "  • Port 80 must be accessible from internet"
 echo ""
 
-log_info "💡 Next steps:"
-echo "  1. Verify DNS points to: $(hostname -I | awk '{print $1}')"
-echo "  2. Ensure firewall allows port 80 (HTTP)"
-echo "  3. Request your first certificate"
-echo "  4. Configure Nginx to use the certificate"
-echo "  5. Test renewal: sudo $DATA_DIR/renew-certs.sh --dry-run"
+log_info "Troubleshooting:"
+echo "  • DNS not propagated: wait 24-48 hours"
+echo "  • Port 80 blocked: check firewall (ufw allow 80)"
+echo "  • Domain not pointing here: check DNS A record"
+echo "  • Nginx config error: sudo nginx -t"
 echo ""
+
+read -p "Press Enter to continue..."
