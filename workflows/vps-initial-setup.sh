@@ -177,11 +177,19 @@ create_admin_user() {
     USER_HOME="/home/$NEW_USER"
     mkdir -p "$USER_HOME/.ssh"
     chmod 700 "$USER_HOME/.ssh"
-    touch "$USER_HOME/.ssh/authorized_keys"
-    chmod 600 "$USER_HOME/.ssh/authorized_keys"
     chown -R "$NEW_USER:$NEW_USER" "$USER_HOME/.ssh"
     
-    log_success "SSH directory configured"
+    # Move repository if exists
+    REPO_MOVED=false
+    if [ -d "/root/my-scripts" ]; then
+        log_info "Moving repository to user home..."
+        mv /root/my-scripts "$USER_HOME/"
+        chown -R "$NEW_USER:$NEW_USER" "$USER_HOME/my-scripts"
+        REPO_MOVED=true
+        log_success "Repository moved to $USER_HOME/my-scripts"
+    fi
+    
+    log_success "User configuration completed"
 }
 
 # Kernel and system hardening
@@ -250,7 +258,7 @@ AddressFamily inet
 Protocol 2
 
 # Authentication
-PermitRootLogin no
+PermitRootLogin yes
 PubkeyAuthentication yes
 PasswordAuthentication yes
 PermitEmptyPasswords no
@@ -275,12 +283,36 @@ LoginGraceTime 60
 AllowUsers $NEW_USER
 EOF
     
-    log_success "SSH configured on port $SSH_PORT"
+    # Test SSH configuration
+    if ! sshd -t; then
+        log_error "SSH configuration is invalid!"
+        log_error "Restoring backup..."
+        mv /etc/ssh/sshd_config.backup_$(ls -t /etc/ssh/sshd_config.backup_* | head -1 | cut -d'_' -f2-) /etc/ssh/sshd_config
+        exit 1
+    fi
+    
+    # Restart SSH service
+    log_info "Restarting SSH service..."
+    systemctl restart sshd || systemctl restart ssh
+    
+    if ! systemctl is-active --quiet sshd && ! systemctl is-active --quiet ssh; then
+        log_error "Failed to restart SSH service!"
+        exit 1
+    fi
+    
+    log_success "SSH configured on port $SSH_PORT and service restarted"
 }
 
 # Configure firewall
 configure_firewall() {
     log_step "Step 6: Firewall Configuration"
+    
+    # Verify SSH is running on new port
+    if ! ss -tlnp | grep -q ":$SSH_PORT "; then
+        log_error "SSH is not listening on port $SSH_PORT!"
+        log_error "Skipping firewall configuration for safety"
+        return 1
+    fi
     
     # Reset UFW
     ufw --force reset
@@ -289,8 +321,19 @@ configure_firewall() {
     ufw default deny incoming
     ufw default allow outgoing
     
-    # Allow SSH on new port
+    # IMPORTANT: Allow SSH FIRST before enabling firewall
     ufw allow "$SSH_PORT/tcp" comment "SSH"
+    
+    log_warn "Firewall will be enabled with SSH port $SSH_PORT allowed"
+    log_warn "Make sure you can connect on this port before proceeding!"
+    
+    echo -n "${YELLOW}Enable firewall now? (yes/no):${NC} "
+    read -r confirm
+    if [[ "$confirm" != "yes" ]]; then
+        log_warn "Firewall configuration skipped - you can enable it later"
+        log_info "To enable: ufw allow $SSH_PORT/tcp && ufw --force enable"
+        return 0
+    fi
     
     # Allow HTTP/HTTPS (for web services)
     ufw allow 80/tcp comment "HTTP"
@@ -299,7 +342,7 @@ configure_firewall() {
     # Enable UFW
     ufw --force enable
     
-    log_success "Firewall configured"
+    log_success "Firewall configured and enabled"
 }
 
 # Configure Fail2ban
@@ -462,24 +505,65 @@ main() {
     final_checks
     
     echo ""
+    echo ""
     log_success "═══════════════════════════════════════════"
     log_success "  VPS Setup Completed Successfully!"
     log_success "═══════════════════════════════════════════"
     echo ""
-    log_info "Important Information:"
-    echo "  • New User:    $NEW_USER"
-    echo "  • SSH Port:    $SSH_PORT"
-    echo "  • Server IP:   $(hostname -I | awk '{print $1}')"
+    log_info "Configuration Summary:"
+    echo "  • New User:     $NEW_USER"
+    echo "  • SSH Port:     $SSH_PORT"
+    echo "  • Server IP:    $(hostname -I | awk '{print $1}')"
+    echo "  • Root Access:  Available via 'su -' command"
     echo ""
-    log_warn "Next Steps:"
-    echo "  1. Test SSH connection in a NEW terminal:"
-    echo "     ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
+    
+    if [ "$REPO_MOVED" = true ]; then
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_info "  REPOSITORY LOCATION"
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "  Repository moved from /root/my-scripts to:"
+        echo "  /home/$NEW_USER/my-scripts"
+        echo ""
+        echo "  After login, access it with:"
+        echo "    cd ~/my-scripts"
+        echo ""
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+    fi
+    
+    log_info "Connection Instructions:"
     echo ""
-    echo "  2. Verify you can login and use sudo"
+    echo "  Connect with password:"
+    echo "    ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
     echo ""
-    echo "  3. Once confirmed, you can disable root login completely"
+    echo "  Switch to root when needed:"
+    echo "    su -"
     echo ""
-    log_warn "⚠️  DO NOT close this session until you verify SSH access!"
+    
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_warn "  IMPORTANT: TEST CONNECTION NOW!"
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "  Open a NEW terminal and test connection:"
+    echo ""
+    echo "    ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
+    echo ""
+    echo "  If connection works:"
+    echo "    ✓ Type 'sudo whoami' to verify sudo access"
+    echo "    ✓ Type 'su -' to switch to root"
+    echo "    ✓ You can safely close THIS root session"
+    if [ "$REPO_MOVED" = true ]; then
+        echo "    ✓ All scripts available in: ~/my-scripts/"
+    fi
+    echo ""
+    echo "  If connection FAILS:"
+    echo "    1. Check: systemctl status sshd"
+    echo "    2. Check: ss -tlnp | grep $SSH_PORT"
+    echo "    3. Check: ufw status"
+    echo "    4. Try: ufw allow $SSH_PORT/tcp"
+    echo ""
+    log_warn "⚠️  DO NOT CLOSE THIS ROOT SESSION UNTIL VERIFIED!"
     echo ""
 }
 

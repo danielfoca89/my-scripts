@@ -234,9 +234,3 @@ See [LICENCE](LICENCE) file for full license text.
 ## Author
 
 **Daniel Foca** ([@danielfoca89](https://github.com/danielfoca89))
-
----
-
-**Simple. Direct. Production-ready.** 🎯
-
-*No complex menus. No color issues. Just select a number and install.*
