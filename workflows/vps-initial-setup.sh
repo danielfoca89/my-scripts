@@ -124,6 +124,9 @@ gather_information() {
     echo "  SSH Port: $SSH_PORT"
     echo ""
     
+    echo "Your connection will be interrupted when SSH is restarted."
+    echo "After setup, connect using the new username and port."
+
     echo -ne "${YELLOW}Proceed with setup? (yes/no):${NC} "
     read -r confirm
     if [[ "$confirm" != "yes" ]]; then
@@ -327,64 +330,13 @@ EOF
         exit 1
     fi
     
-    # Get SSH service name for this OS (ssh on Ubuntu/Debian, sshd on RHEL/others)
-    SSH_SERVICE=$(get_ssh_service_name)
-    log_info "Detected SSH service: $SSH_SERVICE"
-    
-    # Reload SSH service to apply new configuration
-    # Using 'reload' instead of 'restart' to avoid dropping existing connections
-    log_info "Reloading SSH service ($SSH_SERVICE) to apply new configuration..."
-    if systemctl reload "$SSH_SERVICE" 2>/dev/null; then
-        log_success "SSH service reloaded successfully"
-    else
-        log_warn "Reload failed, attempting restart..."
-        if ! systemctl restart "$SSH_SERVICE"; then
-            log_error "Failed to restart SSH service!"
-            log_error "Restoring backup configuration..."
-            LATEST_BACKUP=$(ls -t /etc/ssh/sshd_config.backup_* 2>/dev/null | head -1)
-            if [ -n "$LATEST_BACKUP" ]; then
-                cp "$LATEST_BACKUP" /etc/ssh/sshd_config
-                systemctl restart "$SSH_SERVICE"
-            fi
-            exit 1
-        fi
-    fi
-    
-    # Verify SSH is running
-    sleep 2
-    if ! systemctl is-active --quiet "$SSH_SERVICE"; then
-        log_error "SSH service is not active after reload!"
-        exit 1
-    fi
-    
-    log_success "SSH configured on port $SSH_PORT and service reloaded"
+    log_success "SSH configuration written and validated (port $SSH_PORT)"
+    log_info "SSH will be restarted at the end of setup"
 }
 
 # Configure firewall
 configure_firewall() {
     log_step "Step 6: Firewall Configuration"
-    
-    # Wait for SSH to fully bind to new port
-    log_info "Waiting for SSH to bind to port $SSH_PORT..."
-    sleep 3
-    
-    # Verify SSH is running on new port (check multiple times)
-    SSH_LISTENING=false
-    for i in {1..5}; do
-        if ss -tlnp 2>/dev/null | grep -q ":$SSH_PORT" || netstat -tlnp 2>/dev/null | grep -q ":$SSH_PORT"; then
-            SSH_LISTENING=true
-            break
-        fi
-        sleep 1
-    done
-    
-    if [ "$SSH_LISTENING" = false ]; then
-        log_error "SSH is not listening on port $SSH_PORT!"
-        log_error "Skipping firewall configuration for safety"
-        return 1
-    fi
-    
-    log_success "Confirmed SSH is listening on port $SSH_PORT"
     
     # Get firewall type for this OS
     FIREWALL_TYPE=$(get_firewall_service)
@@ -398,26 +350,19 @@ configure_firewall() {
         ufw default deny incoming
         ufw default allow outgoing
         
-        # IMPORTANT: Allow SSH FIRST before enabling firewall
+        # IMPORTANT: Allow SSH on NEW PORT before enabling firewall
+        log_info "Allowing SSH on port $SSH_PORT..."
         ufw allow "$SSH_PORT/tcp" comment "SSH"
-        
-        log_warn "Firewall will be enabled with SSH port $SSH_PORT allowed"
-        log_warn "Make sure you can connect on this port before proceeding!"
-        
-        echo -ne "${YELLOW}Enable firewall now? (yes/no):${NC} "
-        read -r confirm
-        if [[ "$confirm" != "yes" ]]; then
-            log_warn "Firewall configuration skipped - you can enable it later"
-            log_info "To enable: ufw allow $SSH_PORT/tcp && ufw --force enable"
-            return 0
-        fi
         
         # Allow HTTP/HTTPS (for web services)
         ufw allow 80/tcp comment "HTTP"
         ufw allow 443/tcp comment "HTTPS"
         
         # Enable UFW
+        log_info "Enabling firewall..."
         ufw --force enable
+        
+        log_success "Firewall enabled with SSH port $SSH_PORT allowed"
         
     elif [ "$FIREWALL_TYPE" = "firewalld" ]; then
         # firewalld (RHEL/CentOS/AlmaLinux)
@@ -587,6 +532,33 @@ main() {
         exit 1
     fi
     
+    # Check if running over SSH - DANGEROUS!
+    if [ -n "$SSH_CONNECTION" ] || [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
+        echo ""
+        log_error "═══════════════════════════════════════════════════════════"
+        log_error "  DANGER: This script is being run over SSH!"
+        log_error "═══════════════════════════════════════════════════════════"
+        echo ""
+        log_warn "This script will RESTART SSH service and change the port."
+        log_warn "Running it over SSH will disconnect you and may lock you out!"
+        echo ""
+        log_info "How to run safely:"
+        echo "  1. Use VPS provider's web console (VNC/noVNC)"
+        echo "  2. Use IPMI/iKVM/BMC console"
+        echo "  3. Have physical access to the server"
+        echo ""
+        echo -ne "${YELLOW}Are you ABSOLUTELY SURE you want to continue? (type 'FORCE' to proceed):${NC} "
+        read -r confirm
+        if [[ "$confirm" != "FORCE" ]]; then
+            log_info "Setup cancelled - use web console instead"
+            exit 0
+        fi
+        echo ""
+        log_warn "⚠️  YOU HAVE BEEN WARNED! Proceeding anyway..."
+        echo ""
+        sleep 3
+    fi
+    
     print_banner
     
     log_warn "This script will configure and harden your VPS"
@@ -614,64 +586,81 @@ main() {
     echo ""
     echo ""
     log_success "═══════════════════════════════════════════"
-    log_success "  VPS Setup Completed Successfully!"
+    log_success "  VPS Configuration Completed!"
     log_success "═══════════════════════════════════════════"
     echo ""
     log_info "Configuration Summary:"
     echo "  • New User:     $NEW_USER"
-    echo "  • SSH Port:     $SSH_PORT"
+    echo "  • SSH Port:     $SSH_PORT (NOT YET ACTIVE)"
     echo "  • Server IP:    $(hostname -I | awk '{print $1}')"
-    echo "  • Root Access:  Available via 'su -' command"
     echo ""
     
     if [ "$REPO_MOVED" = true ]; then
-        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        log_info "  REPOSITORY LOCATION"
-        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
-        echo "  Repository moved from /root/my-scripts to:"
-        echo "  /home/$NEW_USER/my-scripts"
-        echo ""
-        echo "  After login, access it with:"
-        echo "    cd ~/my-scripts"
-        echo ""
-        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo ""
+        log_info "Repository moved to: /home/$NEW_USER/my-scripts"
     fi
     
-    log_info "Connection Instructions:"
     echo ""
-    echo "  Connect with password:"
-    echo "    ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_warn "  FINAL STEP: SSH SERVICE RESTART REQUIRED"
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "  Switch to root when needed:"
-    echo "    su -"
+    log_error "⚠️  WARNING: SSH will now restart on port $SSH_PORT"
+    echo ""
+    log_info "What will happen:"
+    echo "  1. SSH service restarts with new configuration"
+    echo "  2. SSH will listen ONLY on port $SSH_PORT"
+    echo "  3. Root login will be DISABLED"
+    echo "  4. You can only login as: $NEW_USER"
     echo ""
     
-    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_warn "  IMPORTANT: TEST CONNECTION NOW!"
-    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    echo "  Open a NEW terminal and test connection:"
-    echo ""
-    echo "    ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
-    echo ""
-    echo "  If connection works:"
-    echo "    ✓ Type 'sudo whoami' to verify sudo access"
-    echo "    ✓ Type 'su -' to switch to root"
-    echo "    ✓ You can safely close THIS root session"
-    if [ "$REPO_MOVED" = true ]; then
-        echo "    ✓ All scripts available in: ~/my-scripts/"
+    if [ -n "$SSH_CONNECTION" ]; then
+        log_error "YOU ARE CONNECTED VIA SSH - YOU WILL BE DISCONNECTED!"
     fi
+    
     echo ""
-    echo "  If connection FAILS:"
-    echo "    1. Check: systemctl status sshd"
-    echo "    2. Check: ss -tlnp | grep $SSH_PORT"
-    echo "    3. Check: ufw status"
-    echo "    4. Try: ufw allow $SSH_PORT/tcp"
+    log_info "After SSH restarts, connect with:"
     echo ""
-    log_warn "⚠️  DO NOT CLOSE THIS ROOT SESSION UNTIL VERIFIED!"
+    echo "  ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
     echo ""
+    echo "  Password: (the one you set for $NEW_USER)"
+    echo ""
+    log_warn "If you cannot connect, use VPS console to troubleshoot"
+    echo ""
+    
+    echo -ne "${YELLOW}Restart SSH NOW and apply changes? (type 'YES' to confirm):${NC} "
+    read -r final_confirm
+    
+    if [[ "$final_confirm" != "YES" ]]; then
+        echo ""
+        log_info "SSH restart cancelled"
+        log_warn "Configuration is ready but NOT active yet"
+        log_info "To activate manually, run: systemctl restart $(get_ssh_service_name)"
+        exit 0
+    fi
+    
+    echo ""
+    log_info "Restarting SSH service..."
+    
+    # Get SSH service name
+    SSH_SERVICE=$(get_ssh_service_name)
+    
+    # Restart SSH
+    if systemctl restart "$SSH_SERVICE"; then
+        log_success "SSH service restarted successfully!"
+        echo ""
+        log_success "✓ Setup Complete! SSH is now on port $SSH_PORT"
+        echo ""
+        log_warn "This session will now close."
+        log_info "Reconnect with: ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
+        echo ""
+        sleep 2
+        exit 0
+    else
+        log_error "Failed to restart SSH!"
+        log_error "Configuration is still in place, but SSH may not be running"
+        log_warn "Use VPS console to check: systemctl status $SSH_SERVICE"
+        exit 1
+    fi
 }
 
 # Run
