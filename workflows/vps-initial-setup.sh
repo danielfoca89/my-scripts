@@ -320,27 +320,44 @@ EOF
     if ! sshd -t 2>/dev/null; then
         log_error "SSH configuration is invalid!"
         log_error "Restoring backup..."
-        mv /etc/ssh/sshd_config.backup_$(ls -t /etc/ssh/sshd_config.backup_* | head -1 | cut -d'_' -f2-) /etc/ssh/sshd_config
+        LATEST_BACKUP=$(ls -t /etc/ssh/sshd_config.backup_* 2>/dev/null | head -1)
+        if [ -n "$LATEST_BACKUP" ]; then
+            cp "$LATEST_BACKUP" /etc/ssh/sshd_config
+        fi
         exit 1
     fi
     
-    # Get SSH service name for this OS
+    # Get SSH service name for this OS (ssh on Ubuntu/Debian, sshd on RHEL/others)
     SSH_SERVICE=$(get_ssh_service_name)
+    log_info "Detected SSH service: $SSH_SERVICE"
     
-    # Restart SSH service
-    log_info "Restarting SSH service ($SSH_SERVICE)..."
-    if ! service_restart "$SSH_SERVICE"; then
-        log_error "Failed to restart SSH service!"
-        exit 1
+    # Reload SSH service to apply new configuration
+    # Using 'reload' instead of 'restart' to avoid dropping existing connections
+    log_info "Reloading SSH service ($SSH_SERVICE) to apply new configuration..."
+    if systemctl reload "$SSH_SERVICE" 2>/dev/null; then
+        log_success "SSH service reloaded successfully"
+    else
+        log_warn "Reload failed, attempting restart..."
+        if ! systemctl restart "$SSH_SERVICE"; then
+            log_error "Failed to restart SSH service!"
+            log_error "Restoring backup configuration..."
+            LATEST_BACKUP=$(ls -t /etc/ssh/sshd_config.backup_* 2>/dev/null | head -1)
+            if [ -n "$LATEST_BACKUP" ]; then
+                cp "$LATEST_BACKUP" /etc/ssh/sshd_config
+                systemctl restart "$SSH_SERVICE"
+            fi
+            exit 1
+        fi
     fi
     
     # Verify SSH is running
-    if ! service_is_active "$SSH_SERVICE"; then
-        log_error "SSH service is not active after restart!"
+    sleep 2
+    if ! systemctl is-active --quiet "$SSH_SERVICE"; then
+        log_error "SSH service is not active after reload!"
         exit 1
     fi
     
-    log_success "SSH configured on port $SSH_PORT and service restarted"
+    log_success "SSH configured on port $SSH_PORT and service reloaded"
 }
 
 # Configure firewall
