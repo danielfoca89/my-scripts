@@ -1,6 +1,6 @@
 # VPS Orchestrator
 
-> Simple and powerful VPS management system with automated deployment of 20 production-ready applications
+> Smart VPS management system with **automatic dependency resolution** and deployment of 20 production-ready applications
 
 ## Quick Start
 
@@ -13,33 +13,34 @@ cd my-scripts
 ./orchestrator.sh
 
 # Select application number and press Enter
-# Example: Type "8" for Docker Engine, then press Enter
+# Example: Type "12" for n8n, dependencies auto-install
 ```
 
 ## How It Works
 
 1. **Run orchestrator**: `./orchestrator.sh`
-2. **See all 20 applications** listed by category
+2. **See all 20 applications** - ✓ shows already installed
 3. **Type the number** of the app you want
-4. **Press Enter** - installation starts automatically
-5. **Credentials auto-generated** and saved to `~/.vps-secrets/`
+4. **Dependencies auto-install** - Docker, PostgreSQL, Nginx, etc.
+5. **Domain & SSL auto-configured** - for apps that need it (n8n, Grafana, etc.)
+6. **Credentials auto-generated** and saved to `~/.vps-secrets/`
 
-**That's it!** No complex menus, no colors issues, just simple direct installation.
+**That's it!** Intelligent dependency management, zero manual setup.
 
 ## Available Applications (20)
 
 ### Infrastructure (5)
-- Docker Engine - Container runtime
-- Nginx - Reverse proxy & web server
-- Portainer - Docker management UI
-- Certbot - SSL certificate automation
-- Arcane - Modern Docker management UI
+- **Docker Engine** - Container runtime (auto-installed as dependency)
+- **Nginx** - Native reverse proxy & web server (auto-configured for SSL)
+- **Portainer** - Docker management UI
+- **Certbot** - Native SSL certificate automation (Let's Encrypt)
+- **Arcane** - Modern Docker management UI
 
 ### Databases (4)
-- PostgreSQL - Powerful relational database
-- MariaDB - MySQL-compatible database
-- MongoDB - NoSQL document database
-- Redis - In-memory cache & data store
+- **PostgreSQL** - Shared database service (each app creates own DB/user)
+- **MariaDB** - MySQL-compatible database
+- **MongoDB** - NoSQL document database
+- **Redis** - Native in-memory cache & data store
 
 ### Monitoring (4)
 - Grafana - Analytics & visualization dashboards
@@ -48,12 +49,12 @@ cd my-scripts
 - Uptime Kuma - Uptime monitoring & status pages
 
 ### Automation (1)
-- n8n - Workflow automation platform
+- **n8n** - Workflow automation with auto SSL setup (domain + certificate + reverse proxy)
 
 ### Security (3)
-- WireGuard - Modern VPN solution
-- Fail2ban - Intrusion prevention system
-- Security Audit - Vulnerability scanning tools
+- **WireGuard** - Native VPN solution (kernel module)
+- **Fail2ban** - Intrusion prevention system
+- **Security Audit** - Vulnerability scanning tools
 
 ### System (3)
 - VPS Setup - Complete server hardening workflow
@@ -62,48 +63,116 @@ cd my-scripts
 
 ## Key Features
 
-### Simple Workflow
-- One command to start: `./orchestrator.sh`
-- Plain text interface - works everywhere
-- Direct application selection by number
-- Zero complexity, maximum efficiency
+### 🚀 Smart Dependency Management
+- **Automatic dependency resolution** - orchestrator reads `apps.conf`
+- **Auto-install missing dependencies** - Docker, PostgreSQL, Nginx, etc.
+- **Shows installed apps** with ✓ indicator
+- **Recursive dependency checking** - installs full dependency chain
 
-### Automatic Security
+### 🔐 Automatic SSL & Domain Setup
+- **Domain prompts** - for apps like n8n, Grafana (requires_domain=yes)
+- **SSL certificate automation** - Let's Encrypt via Certbot
+- **Nginx reverse proxy** - auto-configured with security headers
+- **HTTPS enforcement** - HTTP → HTTPS redirect
+
+### 💾 PostgreSQL Shared Service
+- **Single PostgreSQL instance** - serves all apps
+- **Isolated databases** - each app gets own DB/user/password
+- **Credentials saved** - `~/.vps-secrets/.env_<app>` format
+- **Example**: n8n creates `n8n_db` + `n8n_user` automatically
+
+### 🛡️ Production Security
 - **Auto-generated credentials** (32-64 character passwords)
 - **Encrypted storage** in `~/.vps-secrets/` (600 permissions)
-- **SSH hardening** with key-only authentication
+- **Password-only SSH** with su - for root access
 - **Firewall configuration** (UFW/firewalld)
-- **Docker isolation** with dedicated network
+- **Native installations** for critical services (Nginx, Redis, Certbot, WireGuard)
 
-### Production Ready
+### ✅ Battle-Tested
 - All 20 applications fully implemented and tested
 - Comprehensive error handling (`set -euo pipefail`)
-- Docker-based deployments with health checks
-- Automatic dependency management
+- Mixed deployments: Docker + native installations
+- Health checks and auto-restart policies
 - Zero placeholders - everything functional
-
-## Requirements
-
-- **OS**: Ubuntu 20.04+, Debian 11+, or CentOS 8+
-- **Access**: Root or sudo privileges
-- **Resources**: 2GB+ RAM (4GB recommended), 20GB+ disk
-- **Network**: Internet connection for downloads
-
-## Project Structure
-
-```
-my-scripts/
-├── orchestrator.sh              # Simple entry point (1.7K)
+mart orchestrator with dependency checking
 ├── lib/                         # Core libraries (3 modules)
 │   ├── utils.sh                # Logging & system helpers
 │   ├── secrets.sh              # Credential management
 │   └── docker.sh               # Docker operations
 ├── apps/                        # 20 application installers
-│   ├── infrastructure/         # Docker, Nginx, Portainer, Certbot, Arcane
-│   ├── databases/              # PostgreSQL, MariaDB, MongoDB, Redis
+│   ├── infrastructure/         # Docker, Nginx*, Portainer, Certbot*, Arcane
+│   ├── databases/              # PostgreSQL, MariaDB, MongoDB, Redis*
 │   ├── monitoring/             # Grafana, Prometheus, Netdata, Uptime Kuma
-│   ├── automation/             # n8n
-│   ├── security/               # WireGuard, Fail2ban, Security Audit
+│   ├── automation/             # n8n (with SSL automation)
+│   ├── security/               # WireGuard*, Fail2ban, Security Audit
+│   └── system/                 # VPS Setup, Node.js, Log Maintenance
+├── config/                      # Configuration files
+│   ├── apps.conf               # Application metadata + dependencies
+│   └── categories.conf         # Category definitions
+├── templates/                   # Docker Compose templates
+└── workflows/                   # Multi-step workflows
+
+* = Native installation (not Docker)
+```
+
+## Architecture Decisions
+
+### Native vs Docker
+
+**Native installations** (direct on host):
+- ✅ **Nginx** - Needs system-level access for port 80/443
+- ✅ **Redis** - Better performance without containerization
+- ✅ **Certbot** - Needs direct filesystem access for SSL certificates
+- ✅ **WireGuard** - Requires kernel module for VPN tunneling
+
+**Docker installations** (containerized):
+- 🐳 **Databases** - PostgreSQL, MariaDB, MongoDB
+- 🐳 **Monitoring** - Grafana, Prometheus, Netdata
+- Example: n8n Installation Workflow
+
+What happens when you select n8n:
+
+```bash
+./orchestrator.sh
+# Select: 12 (n8n)
+
+# Orchestrator checks dependencies:
+✓ docker-engine not installed → auto-installs
+✓ postgres not installed → auto-installs (shared service)
+✓ nginx already installed → skips
+✓ certbot already installed → skips
+
+# n8n installer starts:
+? Enter your domain name: work.venditax.com
+? Enter your email for SSL: admin@venditax.com
+
+# Auto-configuration:
+✓ Creates PostgreSQL database: n8n_db
+✓ Creates PostgreSQL user: n8n_user (with password)
+✓ Saves credentials: ~/.vps-secrets/n8n.env
+✓ Configures Nginx reverse proxy
+✓ Requests SSL certificate from Let's Encrypt
+✓ Updates n8n config with HTTPS settings
+✓ Deploys n8n container
+✓ Access: https://work.venditax.com
+```
+
+## Credential Management
+
+All credentials are automatically generated and securely stored:
+
+```bash
+# View credentials for an app
+cat ~/.vps-secrets/n8n.env
+
+# Example n8n credentials:
+N8N_DOMAIN=work.venditax.com
+N8N_EMAIL=admin@venditax.com
+N8N_USER=admin@n8n.local
+N8N_PASSWORD=<auto-generated-64-chars>
+DB_NAME=n8n_db
+DB_USER=n8n_user
+DB_PASSWORD=<auto-generated-32-chars> # WireGuard, Fail2ban, Security Audit
 │   └── system/                 # VPS Setup, Node.js, Log Maintenance
 ├── config/                      # Configuration files
 │   ├── apps.conf               # Application metadata
@@ -139,20 +208,26 @@ cat ~/.vps-secrets/postgres.env
 ls -la ~/.vps-secrets/
 
 # Credentials are automatically backed up during updates
-ls ~/.vps-secrets/.backup/
-```
-
-## Troubleshooting
+ls ~5,000+ lines** of production bash code
+- **20 applications** fully implemented
+- **3 core libraries** (utils, secrets, docker)
+- **1 smart orchestrator** with dependency auto-install
+- **4 native installers** (Nginx, Redis, Certbot, WireGuard)
+- **Automatic SSL** configuration for domain-based apps
+- **PostgreSQL shared service** pattern
 
 ### Permissions Issue
 ```bash
 chmod +x orchestrator.sh
-chmod -R +x lib/ apps/
-```
-
-### Docker Not Found
-```bash
-./apps/infrastructure/docker-engine/install.sh
+chPassword-based SSH with su - for root access  
+✅ UFW/firewalld firewall configuration  
+✅ Docker network isolation  
+✅ Fail2ban intrusion prevention  
+✅ Regular security audits via Trivy  
+✅ SSL/TLS certificate automation (Let's Encrypt)  
+✅ HTTPS enforcement with Nginx reverse proxy  
+✅ Database isolation (each app has own DB/user)  
+✅ Native installations for critical servicesine/install.sh
 ```
 
 ### View Application Logs
