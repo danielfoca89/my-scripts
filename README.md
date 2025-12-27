@@ -77,14 +77,6 @@ cd my-scripts
 - Log Paths: /var/log/auth.log or /var/log/secure
 ```
 
-**Test detection:**
-```bash
-./test-os-detection.sh
-# Shows: OS: ubuntu 22.04 (debian)
-# Shows: SSH Service: ssh
-# Shows: Firewall: ufw
-```
-
 ## Key Features
 
 ### 🚀 Smart Dependency Management
