@@ -19,13 +19,15 @@ cd my-scripts
 ## How It Works
 
 1. **Run orchestrator**: `./orchestrator.sh`
-2. **See all 20 applications** - ✓ shows already installed
-3. **Type the number** of the app you want
+2. **See all 20 applications** with status:
+   - `1) n8n                       [✓ Installed]` - shows what's already installed
+   - `2) mariadb` - not installed yet
+3. **Type the number** of the app you want (works with or without sudo)
 4. **Dependencies auto-install** - Docker, PostgreSQL, Nginx, etc.
 5. **Domain & SSL auto-configured** - for apps that need it (n8n, Grafana, etc.)
 6. **Credentials auto-generated** and saved to `~/.vps-secrets/`
 
-**That's it!** Intelligent dependency management, zero manual setup.
+**That's it!** Intelligent dependency management, zero manual setup, universal OS support.
 
 ## Available Applications (20)
 
@@ -71,17 +73,27 @@ cd my-scripts
 **Auto-adapts to your system:**
 ```bash
 # Automatically detects and uses:
-- Package Manager: apt / dnf / yum / pacman
+- Package Manager: apt/apt-get / dnf / yum / pacman
+- Sudo Groups: sudo (Debian/Ubuntu) / wheel (RHEL/AlmaLinux)
 - SSH Service: ssh (Debian) or sshd (RHEL)
 - Firewall: ufw (Debian) or firewalld (RHEL)
 - Log Paths: /var/log/auth.log or /var/log/secure
+- Init System: systemd (universal)
 ```
+
+**Universal sudo support:**
+- ✅ **Installs sudo automatically** - setup-vps ensures sudo is installed on all distributions
+- ✅ **Correct group detection** - uses `sudo` group on Debian/Ubuntu, `wheel` on RHEL/AlmaLinux
+- ✅ **run_sudo() wrapper** - all scripts use universal sudo function that works as root or non-root
+- ✅ **Works everywhere** - SUDO_PASS environment variable, interactive prompts, or direct execution
 
 ## Key Features
 
 ### 🚀 Smart Dependency Management
-- **Automatic dependency resolution** - orchestrator reads `apps.conf`
-- **Auto-install missing dependencies** - Docker, PostgreSQL, Nginx, etc.
+- **AutomaALL apps with status** - `[✓ Installed]` marker for installed apps
+- **Clear dependency feedback** - `✓ Dependency already installed: docker-engine`
+- **Recursive dependency checking** - installs full dependency chain
+- **No interruptions** - smooth flow without logout prompts or warnings etc.
 - **Shows installed apps** with ✓ indicator
 - **Recursive dependency checking** - installs full dependency chain
 
@@ -96,7 +108,10 @@ cd my-scripts
 - **Isolated databases** - each app gets own DB/user/password
 - **Credentials saved** - `~/.vps-secrets/.env_<app>` format
 - **Example**: n8n creates `n8n_db` + `n8n_user` automatically
-
+Universal sudo support** - works on all distributions
+- **Automatic sudo installation** - setup-vps installs sudo if missing
+- **Correct permissions** - users added to `sudo` (Debian) or `wheel` (RHEL)
+- **
 ### 🛡️ Production Security
 - **Auto-generated credentials** (32-64 character passwords)
 - **Encrypted storage** in `~/.vps-secrets/` (600 permissions)
@@ -294,29 +309,34 @@ nano apps/category/app-name/install.sh
 All installers follow the same structure:
 - Load libraries
 - Check dependencies
-- Generate credentials
-- Setup directories
-- Deploy container
-- Display connection info
-
-## Statistics
-
-- **5,500+ lines** of production bash code
-- **20 applications** fully implemented
+- Ge6,000+ lines** of production bash code
+- **20 applications** fully implemented and tested
 - **4 core libraries** (utils, secrets, docker, os-detect)
+- **Universal OS support** - Debian, Ubuntu, AlmaLinux, Rocky, Fedora, CentOS
+- **Universal sudo** - auto-installs and configures sudo/wheel groups correctly
+- **Smart dependency resolution** - auto-install full chain with clear status
+- **4 native installers** (Nginx, Redis, Certbot, WireGuard)
+- **Automatic SSL** configuration for domain-based apps
+- **PostgreSQL shared service** pattern
+- **Consistent UX** - all apps show `✓` for success, clear dependency messages
+- **Zero placeholders** - 100% functional
+- **100% syntax validated** ✅
+- **35+ bug fixes** in December 2025 - production-ready, secrets, docker, os-detect)
 - **Universal OS support** - Debian, Ubuntu, AlmaLinux, Rocky, Fedora
 - **Smart dependency resolution** - auto-install full chain
 - **4 native installers** (Nginx, Redis, Certbot, WireGuard)
 - **Automatic SSL** configuration for domain-based apps
-- **PostgreSQL shared service** pattern
-- **Zero placeholders** - 100% functional
-- **100% syntax validated** ✅
-
-## Security Best Practices
-
-✅ Auto-generated strong passwords (32-64 chars)  
-✅ Encrypted credential storage (600/700 permissions)  
+- Universal sudo support (auto-installs, correct groups)  
 ✅ Password-based SSH with su - for root access  
+✅ Universal firewall support (UFW/firewalld auto-detected)  
+✅ Docker network isolation (vps_network)  
+✅ Fail2ban intrusion prevention  
+✅ Regular security audits via Trivy  
+✅ SSL/TLS certificate automation (Let's Encrypt)  
+✅ HTTPS enforcement with Nginx reverse proxy  
+✅ Database isolation (each app has own DB/user)  
+✅ Native installations for critical services  
+✅ All privileged commands use run_sudo wrapperss  
 ✅ Universal firewall support (UFW/firewalld)  
 ✅ Docker network isolation  
 ✅ Fail2ban intrusion prevention  

@@ -101,9 +101,9 @@ echo ""
     # Firewall status
     echo "Firewall Status:"
     if command -v ufw &> /dev/null; then
-        sudo ufw status 2>&1 || echo "UFW not active"
+        run_sudo ufw status 2>&1 || echo "UFW not active"
     elif command -v firewall-cmd &> /dev/null; then
-        sudo firewall-cmd --state 2>&1 || echo "Firewalld not active"
+        run_sudo firewall-cmd --state 2>&1 || echo "Firewalld not active"
     else
         echo "No firewall detected"
     fi

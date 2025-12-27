@@ -135,16 +135,16 @@ fi
 echo -e "${BLUE}5. Cleaning package manager cache...${NC}"
 log_msg "Cleaning package manager cache"
 if command -v apt-get &> /dev/null; then
-    sudo apt-get autoremove -y >/dev/null 2>&1 || true
-    sudo apt-get autoclean -y >/dev/null 2>&1 || true
+    run_sudo apt-get autoremove -y >/dev/null 2>&1 || true
+    run_sudo apt-get autoclean -y >/dev/null 2>&1 || true
     echo -e "  ${GREEN}✓ APT cache cleaned${NC}"
     log_msg "APT cache cleaned"
 elif command -v yum &> /dev/null; then
-    sudo yum clean all >/dev/null 2>&1 || true
+    run_sudo yum clean all >/dev/null 2>&1 || true
     echo -e "  ${GREEN}✓ YUM cache cleaned${NC}"
     log_msg "YUM cache cleaned"
 elif command -v dnf &> /dev/null; then
-    sudo dnf clean all >/dev/null 2>&1 || true
+    run_sudo dnf clean all >/dev/null 2>&1 || true
     echo -e "  ${GREEN}✓ DNF cache cleaned${NC}"
     log_msg "DNF cache cleaned"
 fi

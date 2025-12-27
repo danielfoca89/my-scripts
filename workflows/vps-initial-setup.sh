@@ -159,11 +159,11 @@ system_update() {
     
     log_info "Upgrading packages..."
     if is_debian_based; then
-        DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-        apt-get autoremove -y
+        run_sudo env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+        run_sudo apt-get autoremove -y
     elif is_rhel_based; then
-        dnf upgrade -y || yum upgrade -y
-        dnf autoremove -y || yum autoremove -y
+        run_sudo dnf upgrade -y || run_sudo yum upgrade -y
+        run_sudo dnf autoremove -y || run_sudo yum autoremove -y
     fi
     
     log_success "System updated"
