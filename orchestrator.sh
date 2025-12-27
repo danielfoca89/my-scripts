@@ -38,21 +38,29 @@ is_app_installed() {
             check_docker 2>/dev/null && return 0 || return 1
             ;;
         nginx)
-            systemctl is-active --quiet nginx 2>/dev/null && return 0 || return 1
+            run_sudo systemctl is-active --quiet nginx 2>/dev/null && return 0 || return 1
             ;;
         postgres)
-            docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$" && return 0 || return 1
+            if command -v docker &>/dev/null; then
+                run_sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$" && return 0 || return 1
+            else
+                return 1
+            fi
             ;;
         redis)
-            systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null && return 0 || return 1
+            run_sudo systemctl is-active --quiet redis-server 2>/dev/null || run_sudo systemctl is-active --quiet redis 2>/dev/null && return 0 || return 1
             ;;
         certbot)
             command -v certbot &>/dev/null && return 0 || return 1
             ;;
         *)
             # For other apps, check if Docker container exists
-            if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$"; then
-                return 0
+            if command -v docker &>/dev/null; then
+                if run_sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$"; then
+                    return 0
+                else
+                    return 1
+                fi
             else
                 return 1
             fi
@@ -102,7 +110,7 @@ install_dependencies() {
                 return 1
             fi
         else
-            log_success "Dependency already installed: $dep"
+            log_success "✓ Dependency already installed: $dep"
         fi
     done
     
@@ -111,8 +119,7 @@ install_dependencies() {
 
 clear
 echo "=============================================="
-echo "    VPS ORCHESTRATOR - Smart Mode"
-echo "    Automatic Dependency Management"
+echo "  Instalare Aplicații"
 echo "=============================================="
 echo ""
 

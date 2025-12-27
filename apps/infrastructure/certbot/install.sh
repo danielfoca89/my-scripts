@@ -35,7 +35,7 @@ log_step "Step 2: Checking dependencies"
 NGINX_RUNNING=false
 if systemctl is-active --quiet nginx 2>/dev/null; then
     NGINX_RUNNING=true
-    log_success "Nginx detected and running"
+    log_success "✓ Nginx detected and running"
 else
     log_warn "Nginx not detected"
     log_info "Certbot can still work in standalone mode"

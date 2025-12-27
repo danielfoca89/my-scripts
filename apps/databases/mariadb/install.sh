@@ -26,7 +26,7 @@ if ! check_docker; then
     log_info "Please install Docker first: Infrastructure > Docker Engine"
     exit 1
 fi
-log_success "Docker is available"
+log_success "✓ Docker is available"
 echo ""
 
 # Check if already installed

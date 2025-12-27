@@ -32,13 +32,13 @@ if ! check_docker; then
     log_info "Please install Docker first: Infrastructure > Docker Engine"
     exit 1
 fi
-log_success "Docker is available"
+log_success "✓ Docker is available"
 
 # PostgreSQL check (REQUIRED)
 POSTGRES_AVAILABLE=false
 if run_sudo docker ps --format '{{.Names}}' | grep -q "^postgres$"; then
     POSTGRES_AVAILABLE=true
-    log_success "PostgreSQL detected"
+    log_success "✓ PostgreSQL detected"
 else
     log_error "PostgreSQL is not installed"
     log_info "PostgreSQL is REQUIRED for n8n production deployment"
@@ -53,7 +53,7 @@ if ! run_sudo systemctl is-active --quiet nginx 2>/dev/null; then
     log_info "Please install Nginx first: Infrastructure > Nginx"
     exit 1
 fi
-log_success "Nginx is available"
+log_success "✓ Nginx is available"
 
 # Certbot check (REQUIRED for SSL)
 if ! command -v certbot &>/dev/null; then
@@ -62,12 +62,12 @@ if ! command -v certbot &>/dev/null; then
     log_info "Please install Certbot first: Infrastructure > Certbot"
     exit 1
 fi
-log_success "Certbot is available"
+log_success "✓ Certbot is available"
 echo ""
 
 # Check for existing installation
 if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "n8n is already installed"
+    log_success "✓ n8n is already installed"
     if confirm_action "Reinstall?"; then
         log_info "Removing existing installation..."
         run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true

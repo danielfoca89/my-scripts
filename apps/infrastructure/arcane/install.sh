@@ -31,12 +31,12 @@ if ! check_docker; then
     log_info "Please install Docker first: Infrastructure > Docker Engine"
     exit 1
 fi
-log_success "Docker is available"
+log_success "✓ Docker is available"
 echo ""
 
 # Check for existing installation
 if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "Arcane is already installed"
+    log_success "✓ Arcane is already installed"
     if confirm_action "Reinstall?"; then
         log_info "Removing existing installation..."
         run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true

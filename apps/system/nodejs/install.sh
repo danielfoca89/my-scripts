@@ -54,7 +54,7 @@ echo ""
 # Check for existing NVM installation
 log_step "Step 2: Checking for existing NVM installation"
 if [ -d "$HOME/.nvm" ]; then
-    log_warn "NVM is already installed"
+    log_success "✓ NVM is already installed"
     if confirm_action "Reinstall/Update?"; then
         log_info "Proceeding with NVM update..."
     else

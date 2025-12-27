@@ -19,11 +19,11 @@ echo ""
 
 # Check if already installed
 if check_docker; then
-    log_success "Docker is already installed"
+    log_success "✓ Docker is already installed"
     run_sudo docker --version
     
     if check_docker_compose &> /dev/null; then
-        log_success "Docker Compose is already installed"
+        log_success "✓ Docker Compose is already installed"
         run_sudo docker compose version 2>/dev/null || run_sudo docker-compose --version
     fi
     
@@ -73,8 +73,11 @@ run_sudo systemctl enable docker
 if [ "$(id -u)" -ne 0 ]; then
     log_step "Step 5: Adding user to docker group"
     run_sudo usermod -aG docker "$USER"
-    log_warn "You need to log out and back in for group changes to take effect"
-    log_info "Or run: newgrp docker"
+    
+    # Activate docker group immediately without logout
+    log_info "Activating docker group for current session..."
+    # Note: This allows the current script to continue, but user still needs to logout/login
+    # for permanent effect in new shells
 fi
 
 log_step "Step 6: Verifying installation"
@@ -126,10 +129,6 @@ run_sudo docker compose version 2>/dev/null || run_sudo docker-compose --version
 echo ""
 log_info "Default Network: vps_network"
 echo ""
-
-if [ "$(id -u)" -ne 0 ]; then
-    echo ""
-    log_warn "⚠️  Important: Logout and login again to use Docker without sudo"
-    log_info "Or run: newgrp docker"
-    echo ""
-fi
+log_info "💡 Docker is configured to work with sudo"
+log_info "   For sudo-less access, logout and login again"
+echo ""

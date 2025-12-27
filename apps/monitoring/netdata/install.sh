@@ -33,12 +33,12 @@ log_success "Docker is available"
 echo ""
 
 # Check for existing installation
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "Netdata is already installed"
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    log_success "✓ Netdata is already installed"
     if confirm_action "Reinstall?"; then
         log_info "Removing existing installation..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
     else
         log_info "Installation cancelled"
         exit 0

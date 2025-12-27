@@ -26,17 +26,17 @@ if ! check_docker; then
     log_info "Please install Docker first: Infrastructure > Docker Engine"
     exit 1
 fi
-log_success "Docker is available"
+log_success "✓ Docker is available"
 echo ""
 
 # Check if already installed
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     log_warn "Prometheus container already exists"
     
     if confirm_action "Do you want to reinstall Prometheus?"; then
         log_info "Stopping and removing existing container..."
-        docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+        run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
     else
         log_info "Installation cancelled"
         exit 0
