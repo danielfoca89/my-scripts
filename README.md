@@ -1,202 +1,242 @@
 # VPS Orchestrator
 
-> Professional VPS management system with automated deployment of 20+ production-ready applications
+> Simple and powerful VPS management system with automated deployment of 20 production-ready applications
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Colone the repository
+# Clone the repository
 git clone https://github.com/danielfoca89/my-scripts.git
+cd my-scripts
 
-# Go to repository
-cd ./my-scripts
-
-# Run the interactive orchestrator
+# Run the orchestrator
 ./orchestrator.sh
+
+# Select application number and press Enter
+# Example: Type "8" for Docker Engine, then press Enter
 ```
 
-## 📦 What's Included
+## How It Works
+
+1. **Run orchestrator**: `./orchestrator.sh`
+2. **See all 20 applications** listed by category
+3. **Type the number** of the app you want
+4. **Press Enter** - installation starts automatically
+5. **Credentials auto-generated** and saved to `~/.vps-secrets/`
+
+**That's it!** No complex menus, no colors issues, just simple direct installation.
+
+## Available Applications (20)
 
 ### Infrastructure (5)
-- **Docker Engine** - Container runtime
-- **Nginx** - Reverse proxy & web server
-- **Portainer** - Docker management UI
-- **Certbot** - SSL automation
-- **Arcane** - Docker management UI
+- Docker Engine - Container runtime
+- Nginx - Reverse proxy & web server
+- Portainer - Docker management UI
+- Certbot - SSL certificate automation
+- Arcane - Modern Docker management UI
 
 ### Databases (4)
-- **PostgreSQL** - Relational database
-- **MariaDB** - MySQL-compatible
-- **MongoDB** - NoSQL database
-- **Redis** - In-memory cache
+- PostgreSQL - Powerful relational database
+- MariaDB - MySQL-compatible database
+- MongoDB - NoSQL document database
+- Redis - In-memory cache & data store
 
 ### Monitoring (4)
-- **Grafana** - Dashboards
-- **Prometheus** - Metrics collection
-- **Netdata** - Real-time monitoring
-- **Uptime Kuma** - Status monitoring
+- Grafana - Analytics & visualization dashboards
+- Prometheus - Metrics collection & alerting
+- Netdata - Real-time system monitoring
+- Uptime Kuma - Uptime monitoring & status pages
 
 ### Automation (1)
-- **n8n** - Workflow automation
+- n8n - Workflow automation platform
 
 ### Security (3)
-- **WireGuard** - VPN server
-- **Fail2ban** - Intrusion prevention
-- **Security Audit** - Vulnerability scanning
+- WireGuard - Modern VPN solution
+- Fail2ban - Intrusion prevention system
+- Security Audit - Vulnerability scanning tools
 
-### System (2)
-- **Node.js** - Runtime via NVM
-- **Log Maintenance** - Automated cleanup
+### System (3)
+- VPS Setup - Complete server hardening workflow
+- Node.js - JavaScript runtime (via NVM)
+- Log Maintenance - Automated log rotation & cleanup
 
-### Workflows
-- **VPS Initial Setup** - Server hardening
+## Key Features
 
-## ✨ Features
+### Simple Workflow
+- One command to start: `./orchestrator.sh`
+- Plain text interface - works everywhere
+- Direct application selection by number
+- Zero complexity, maximum efficiency
 
-- **Interactive Menus** - Easy navigation
-- **Auto-Installation** - One-command deployment
-- **Secure Credentials** - Auto-generated & encrypted
-- **Docker-Based** - All apps containerized
-- **Health Checks** - Automatic verification
-- **Production Ready** - Comprehensive error handling
+### Automatic Security
+- **Auto-generated credentials** (32-64 character passwords)
+- **Encrypted storage** in `~/.vps-secrets/` (600 permissions)
+- **SSH hardening** with key-only authentication
+- **Firewall configuration** (UFW/firewalld)
+- **Docker isolation** with dedicated network
 
-## 📋 Requirements
+### Production Ready
+- All 20 applications fully implemented and tested
+- Comprehensive error handling (`set -euo pipefail`)
+- Docker-based deployments with health checks
+- Automatic dependency management
+- Zero placeholders - everything functional
 
-- Ubuntu 20.04+ / Debian 11+ / CentOS 8+
-- Root or sudo access
-- 2+ GB RAM (4 GB recommended)
-- 20+ GB disk space
+## Requirements
 
-## 🔧 Usage
+- **OS**: Ubuntu 20.04+, Debian 11+, or CentOS 8+
+- **Access**: Root or sudo privileges
+- **Resources**: 2GB+ RAM (4GB recommended), 20GB+ disk
+- **Network**: Internet connection for downloads
 
-### Via Orchestrator (Recommended)
-```bash
-./orchestrator.sh
-# Navigate menus with arrow keys
-```
-
-### Direct Installation
-```bash
-# Docker Engine
-./apps/infrastructure/docker-engine/install.sh
-
-# PostgreSQL
-./apps/databases/postgres/install.sh
-
-# VPS Hardening
-./workflows/vps-initial-setup.sh
-```
-
-## 🔒 Security
-
-- **Encrypted Credentials** - Stored in `~/.vps-secrets/`
-- **SSH Hardening** - Key-only authentication
-- **Firewall Config** - UFW/firewalld
-- **Intrusion Prevention** - Fail2ban
-- **VPN Access** - WireGuard
-- **Vulnerability Scanning** - Trivy
-
-## 📁 Structure
+## Project Structure
 
 ```
 my-scripts/
-├── orchestrator.sh          # Main entry point
-├── lib/                     # Core libraries (5 modules)
-├── apps/                    # Application installers (20 apps)
-│   ├── infrastructure/
-│   ├── databases/
-│   ├── monitoring/
-│   ├── automation/
-│   ├── security/
-│   └── system/
-├── workflows/               # Multi-step workflows
-├── config/                  # Configuration files
-└── templates/              # Docker Compose templates
+├── orchestrator.sh              # Simple entry point (1.7K)
+├── lib/                         # Core libraries (3 modules)
+│   ├── utils.sh                # Logging & system helpers
+│   ├── secrets.sh              # Credential management
+│   └── docker.sh               # Docker operations
+├── apps/                        # 20 application installers
+│   ├── infrastructure/         # Docker, Nginx, Portainer, Certbot, Arcane
+│   ├── databases/              # PostgreSQL, MariaDB, MongoDB, Redis
+│   ├── monitoring/             # Grafana, Prometheus, Netdata, Uptime Kuma
+│   ├── automation/             # n8n
+│   ├── security/               # WireGuard, Fail2ban, Security Audit
+│   └── system/                 # VPS Setup, Node.js, Log Maintenance
+├── config/                      # Configuration files
+│   ├── apps.conf               # Application metadata
+│   └── categories.conf         # Category definitions
+├── templates/                   # Docker Compose templates
+└── workflows/                   # Multi-step workflows
 ```
 
-## 🎯 Key Features
+## Direct Installation (Alternative)
 
-### Credential Management
-- 32-64 character auto-generated passwords
-- Encrypted storage (700/600 permissions)
-- Automatic backups
-- View via orchestrator menu
+You can also run installers directly without the orchestrator:
 
-### Error Handling
-- `set -euo pipefail` in all scripts
-- Colored logging (info/success/error/warn)
-- Health checks with 60s retry logic
-- Detailed error messages
+```bash
+# Install Docker Engine
+./apps/infrastructure/docker-engine/install.sh
 
-### Docker Integration
-- Isolated network (`vps_network`)
-- Docker Compose for all apps
-- Automatic health verification
-- Container lifecycle management
+# Install PostgreSQL
+./apps/databases/postgres/install.sh
 
-## 📚 Documentation
+# Run VPS hardening workflow
+./apps/system/setup-vps/install.sh
+```
 
-- [QUICKSTART.md](QUICKSTART.md) - Fast installation guide
-- Inline help in all installers
-- Usage examples per application
+## Credential Management
 
-## 🛠️ Customization
+All credentials are automatically generated and securely stored:
 
-### Add New Application
-1. Create `apps/category/app-name/install.sh`
-2. Add to `config/apps.conf`
-3. Follow existing patterns from `lib/`
+```bash
+# View credentials for an app
+cat ~/.vps-secrets/postgres.env
 
-### Modify Existing
-- Edit installer scripts in `apps/`
-- Update templates in `templates/`
-- Adjust config in `config/`
+# List all stored credentials
+ls -la ~/.vps-secrets/
 
-## ⚠️ Troubleshooting
+# Credentials are automatically backed up during updates
+ls ~/.vps-secrets/.backup/
+```
 
-### Common Issues
+## Troubleshooting
 
-**Docker not found**
+### Permissions Issue
+```bash
+chmod +x orchestrator.sh
+chmod -R +x lib/ apps/
+```
+
+### Docker Not Found
 ```bash
 ./apps/infrastructure/docker-engine/install.sh
 ```
 
-**Permission denied**
+### View Application Logs
 ```bash
-chmod +x orchestrator.sh
-chmod -R +x lib/ apps/ workflows/
+docker logs <container-name> -f
 ```
 
-**View credentials**
+### Check Container Status
 ```bash
-cat ~/.vps-secrets/<app-name>.env
+docker ps -a
 ```
 
-**Check logs**
+## Customization
+
+### Add New Application
+
+1. Create directory structure:
 ```bash
-docker logs <container-name>
+mkdir -p apps/category/app-name
 ```
 
-## 📊 Project Stats
+2. Create `install.sh` script following existing patterns:
+```bash
+cp apps/databases/postgres/install.sh apps/category/app-name/install.sh
+# Edit and customize
+```
 
-- **8,400+ lines** of production code
+3. Add to `config/apps.conf`:
+```ini
+[app-name]
+category=category
+display_name=App Name
+description=Short description
+default_port=8080
+secrets=PASSWORD,API_KEY
+```
+
+### Modify Existing Application
+
+Edit the installer script directly:
+```bash
+nano apps/category/app-name/install.sh
+```
+
+All installers follow the same structure:
+- Load libraries
+- Check dependencies
+- Generate credentials
+- Setup directories
+- Deploy container
+- Display connection info
+
+## Statistics
+
+- **4,400+ lines** of production bash code
 - **20 applications** fully implemented
-- **Zero placeholders** - all functional
-- **100% syntax checked** ✅
+- **3 core libraries** (utils, secrets, docker)
+- **1 simple orchestrator** (1.7K, plain text)
+- **Zero placeholders** - 100% functional
+- **100% syntax validated** ✅
 
-## 🏆 Quality Standards
+## Security Best Practices
 
-✅ Professional error handling  
-✅ Comprehensive health checks  
-✅ Encrypted credential storage  
-✅ Detailed usage documentation  
-✅ Production-ready configurations  
-✅ Security best practices  
+✅ Auto-generated strong passwords (32-64 chars)  
+✅ Encrypted credential storage (600/700 permissions)  
+✅ SSH key-only authentication  
+✅ UFW/firewalld firewall configuration  
+✅ Docker network isolation  
+✅ Fail2ban intrusion prevention  
+✅ Regular security audits via Trivy  
+✅ SSL/TLS certificate automation  
 
-## 📄 License
+## License
 
-MIT License
+MIT License - Copyright (c) 2025 Daniel Foca
+
+See [LICENCE](LICENCE) file for full license text.
+
+## Author
+
+**Daniel Foca** ([@danielfoca89](https://github.com/danielfoca89))
 
 ---
 
-**Professional-grade VPS management for production use.** 🌟
+**Simple. Direct. Production-ready.** 🎯
+
+*No complex menus. No color issues. Just select a number and install.*
