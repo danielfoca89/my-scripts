@@ -89,7 +89,7 @@ pkg_update() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            run_sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+            run_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
             ;;
         dnf|yum)
             run_sudo $PACKAGE_MANAGER makecache -q
@@ -110,7 +110,7 @@ pkg_install() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            run_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages
+            run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages
             ;;
         dnf|yum)
             run_sudo $PACKAGE_MANAGER install -y -q $packages
@@ -131,7 +131,7 @@ pkg_remove() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            run_sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq $packages
+            run_sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq $packages
             ;;
         dnf|yum)
             run_sudo $PACKAGE_MANAGER remove -y -q $packages
