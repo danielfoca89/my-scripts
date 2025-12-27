@@ -139,7 +139,7 @@ echo ""
 log_info "Login Credentials:"
 echo "  Username: admin"
 echo "  Password: $ADMIN_PASSWORD"
-echo "  Stored in: ~/.vps-secrets/$APP_NAME.env"
+echo "  Stored in: ~/.vps-secrets/.env_$APP_NAME"
 echo ""
 
 log_info "Configuration:"

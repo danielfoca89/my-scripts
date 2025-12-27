@@ -53,8 +53,8 @@ if ! has_credentials "$APP_NAME"; then
     log_info "Generating secure credentials..."
     
     ROOT_PASSWORD=$(generate_secure_password)
-    DB_NAME="mariadb_default"
-    DB_USER="mariadb_user"
+    DB_NAME="db_$(generate_secure_password 12 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
+    DB_USER="user_$(generate_secure_password 12 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
     DB_PASSWORD=$(generate_secure_password)
     
     save_secret "$APP_NAME" "MARIADB_ROOT_PASSWORD" "$ROOT_PASSWORD"

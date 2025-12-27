@@ -123,6 +123,57 @@ get_secret() {
     fi
 }
 
+# Backup all credentials to timestamped archive
+backup_all_secrets() {
+    init_secrets_dir
+    
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_file="${BACKUP_DIR}/credentials_${timestamp}.tar.gz"
+    
+    # Check if there are credentials to backup
+    local cred_files=$(ls -1 "${SECRETS_DIR}"/.env_* 2>/dev/null)
+    
+    if [ -z "$cred_files" ]; then
+        log_warn "No credentials found to backup"
+        return 1
+    fi
+    
+    # Create backup
+    tar -czf "$backup_file" -C "$SECRETS_DIR" \
+        $(ls -A "$SECRETS_DIR" | grep "^\.env_") \
+        2>/dev/null
+    
+    if [ $? -eq 0 ]; then
+        chmod 600 "$backup_file"
+        log_success "Credentials backed up to: $backup_file"
+        return 0
+    else
+        log_error "Backup failed"
+        return 1
+    fi
+}
+
+# Restore credentials from backup
+# Args: $1 = backup_file
+restore_secrets_from_backup() {
+    local backup_file=$1
+    
+    if [ ! -f "$backup_file" ]; then
+        log_error "Backup file not found: $backup_file"
+        return 1
+    fi
+    
+    tar -xzf "$backup_file" -C "$SECRETS_DIR"
+    
+    if [ $? -eq 0 ]; then
+        log_success "Credentials restored from: $backup_file"
+        return 0
+    else
+        log_error "Restore failed"
+        return 1
+    fi
+}
+
 # Display connection information for an application
 # Args: $1 = app_name
 display_connection_info() {

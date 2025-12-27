@@ -53,9 +53,10 @@ if ! has_credentials "$APP_NAME"; then
     log_info "Generating secure admin password..."
     
     ADMIN_PASSWORD=$(generate_secure_password)
+    ADMIN_USER="user_$(generate_secure_password 8 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
     
     save_secret "$APP_NAME" "GF_SECURITY_ADMIN_PASSWORD" "$ADMIN_PASSWORD"
-    save_secret "$APP_NAME" "GF_SECURITY_ADMIN_USER" "admin"
+    save_secret "$APP_NAME" "GF_SECURITY_ADMIN_USER" "$ADMIN_USER"
     
     log_success "Credentials generated and saved"
 else

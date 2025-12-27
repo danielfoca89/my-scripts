@@ -37,10 +37,10 @@ if has_credentials "$APP_NAME"; then
 else
     log_info "Generating new credentials..."
     
-    # Generate secure password
+    # Generate secure password and random credentials
     DB_PASSWORD=$(generate_secure_password 32 "alphanumeric")
-    POSTGRES_USER="postgres"
-    POSTGRES_DB="postgres"
+    POSTGRES_USER="user_$(generate_secure_password 12 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
+    POSTGRES_DB="db_$(generate_secure_password 12 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
     
     # Save credentials
     save_secret "$APP_NAME" "DB_PASSWORD" "$DB_PASSWORD"

@@ -158,23 +158,35 @@ echo ""
 
 # Create PostgreSQL database and user
 log_step "Step 4: Creating PostgreSQL database"
-POSTGRES_PASSWORD=$(get_secret "postgres" "POSTGRES_PASSWORD")
-N8N_DB_NAME="n8n_db"
-N8N_DB_USER="n8n_user"
+
+# Load PostgreSQL superuser credentials
+log_info "Loading PostgreSQL credentials..."
+POSTGRES_USER=$(get_secret "postgres" "POSTGRES_USER")
+POSTGRES_PASSWORD=$(get_secret "postgres" "DB_PASSWORD")
+
+if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_PASSWORD" ]; then
+    log_error "PostgreSQL credentials not found in ~/.vps-secrets/.env_postgres"
+    log_info "Please ensure PostgreSQL is installed first"
+    exit 1
+fi
+
+N8N_DB_NAME="n8n_$(generate_secure_password 8 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
+N8N_DB_USER="user_$(generate_secure_password 8 'alphanumeric' | tr '[:upper:]' '[:lower:]')"
 N8N_DB_PASSWORD=$(generate_secure_password)
 
 log_info "Creating database: $N8N_DB_NAME"
+log_info "Using PostgreSQL superuser: $POSTGRES_USER"
 
 # Create database
-run_sudo docker exec postgres psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$N8N_DB_NAME'" | grep -q 1 || \
-    run_sudo docker exec postgres psql -U postgres -c "CREATE DATABASE $N8N_DB_NAME;"
+run_sudo docker exec postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_database WHERE datname = '$N8N_DB_NAME'" | grep -q 1 || \
+    run_sudo docker exec postgres psql -U "$POSTGRES_USER" -c "CREATE DATABASE $N8N_DB_NAME;"
 
 # Create user
-run_sudo docker exec postgres psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname = '$N8N_DB_USER'" | grep -q 1 || \
-    run_sudo docker exec postgres psql -U postgres -c "CREATE USER $N8N_DB_USER WITH ENCRYPTED PASSWORD '$N8N_DB_PASSWORD';"
+run_sudo docker exec postgres psql -U "$POSTGRES_USER" -tc "SELECT 1 FROM pg_roles WHERE rolname = '$N8N_DB_USER'" | grep -q 1 || \
+    run_sudo docker exec postgres psql -U "$POSTGRES_USER" -c "CREATE USER $N8N_DB_USER WITH ENCRYPTED PASSWORD '$N8N_DB_PASSWORD';"
 
 # Grant privileges
-run_sudo docker exec postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE $N8N_DB_NAME TO $N8N_DB_USER;"
+run_sudo docker exec postgres psql -U "$POSTGRES_USER" -c "GRANT ALL PRIVILEGES ON DATABASE $N8N_DB_NAME TO $N8N_DB_USER;"
 
 # Save database credentials
 save_secret "$APP_NAME" "DB_NAME" "$N8N_DB_NAME"
@@ -435,7 +447,7 @@ log_info "🔑 Security:"
 echo "  • HTTPS enabled with Let's Encrypt"
 echo "  • Basic authentication enabled"
 echo "  • Data encryption active"
-echo "  • Credentials stored in: ~/.vps-secrets/$APP_NAME.env"
+echo "  • Credentials stored in: ~/.vps-secrets/.env_$APP_NAME"
 echo ""
 
 log_info "📦 Docker management:"
