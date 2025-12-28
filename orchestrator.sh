@@ -29,26 +29,26 @@ get_app_config() {
     ' "$APPS_CONF"
 }
 
-# Function to check if an app is installed
+# Function to check if an app is installed (safe for non-root)
 is_app_installed() {
     local app_name="$1"
     
     case "$app_name" in
         docker-engine)
-            check_docker 2>/dev/null && return 0 || return 1
+            command -v docker &>/dev/null && return 0 || return 1
             ;;
         nginx)
-            run_sudo systemctl is-active --quiet nginx 2>/dev/null && return 0 || return 1
+            systemctl is-active --quiet nginx 2>/dev/null && return 0 || return 1
             ;;
         postgres)
             if command -v docker &>/dev/null; then
-                run_sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$" && return 0 || return 1
+                docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$" && return 0 || return 1
             else
                 return 1
             fi
             ;;
         redis)
-            run_sudo systemctl is-active --quiet redis-server 2>/dev/null || run_sudo systemctl is-active --quiet redis 2>/dev/null && return 0 || return 1
+            systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null && return 0 || return 1
             ;;
         certbot)
             command -v certbot &>/dev/null && return 0 || return 1
@@ -56,11 +56,7 @@ is_app_installed() {
         *)
             # For other apps, check if Docker container exists
             if command -v docker &>/dev/null; then
-                if run_sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$"; then
-                    return 0
-                else
-                    return 1
-                fi
+                docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$" && return 0 || return 1
             else
                 return 1
             fi
@@ -140,7 +136,8 @@ for category in apps/*/; do
             apps_list+=("${category_name}/${app_name}")
             
             # Show if installed (disable exit on error for this check)
-            if is_app_installed "$app_name" 2>/dev/null; then
+            # Use subshell to prevent script termination on error
+            if (is_app_installed "$app_name") 2>/dev/null; then
                 printf "   %2d) %-25s [✓ Installed]\n" "$counter" "$app_name"
             else
                 printf "   %2d) %s\n" "$counter" "$app_name"

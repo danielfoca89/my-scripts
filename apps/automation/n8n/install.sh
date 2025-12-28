@@ -61,6 +61,18 @@ if ! run_sudo systemctl is-active --quiet nginx 2>/dev/null; then
 fi
 log_success "✓ Nginx is available"
 
+# Redis check (REQUIRED for queue and cache)
+REDIS_AVAILABLE=false
+if run_sudo systemctl is-active --quiet redis-server 2>/dev/null || run_sudo systemctl is-active --quiet redis 2>/dev/null; then
+    REDIS_AVAILABLE=true
+    log_success "✓ Redis detected (queue and cache)"
+else
+    log_error "Redis is not installed"
+    log_info "Redis is REQUIRED for n8n queue management and caching"
+    log_info "Please install Redis first: Databases > Redis"
+    exit 1
+fi
+
 # Certbot check (REQUIRED for SSL)
 if ! command -v certbot &>/dev/null; then
     log_error "Certbot is not installed"
@@ -254,9 +266,14 @@ services:
       - WEBHOOK_URL=https://$N8N_DOMAIN/
       - GENERIC_TIMEZONE=\${TZ:-Europe/Bucharest}
       
+      # Redis for Queue and Cache
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_BULL_REDIS_DB=0
+      
       # Execution
       - EXECUTIONS_PROCESS=main
-      - EXECUTIONS_MODE=regular
+      - EXECUTIONS_MODE=queue
       
       # Logs
       - N8N_LOG_LEVEL=info
