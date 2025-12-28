@@ -16,6 +16,43 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
+# --- AUDIT LOGGING ---
+AUDIT_LOG="${HOME}/.vps-secrets/.audit.log"
+
+# Initialize audit log
+init_audit_log() {
+    local secrets_dir="${HOME}/.vps-secrets"
+    
+    if [ ! -d "$secrets_dir" ]; then
+        mkdir -p "$secrets_dir"
+        chmod 700 "$secrets_dir"
+    fi
+    
+    if [ ! -f "$AUDIT_LOG" ]; then
+        touch "$AUDIT_LOG"
+        chmod 600 "$AUDIT_LOG"
+    fi
+}
+
+# Write audit log entry
+# Args: $1 = action, $2 = app_name, $3 = details (optional), $4 = result (SUCCESS/FAILED)
+audit_log() {
+    local action=$1
+    local app_name=${2:-"system"}
+    local details=${3:-""}
+    local result=${4:-"SUCCESS"}
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local user=${SUDO_USER:-$(whoami)}
+    
+    init_audit_log
+    
+    if [ -n "$details" ]; then
+        echo "[$timestamp] $action $app_name by $user - $details - $result" >> "$AUDIT_LOG"
+    else
+        echo "[$timestamp] $action $app_name by $user - $result" >> "$AUDIT_LOG"
+    fi
+}
+
 # --- LOGGING FUNCTIONS ---
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"

@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
 source "${SCRIPT_DIR}/lib/docker.sh"
+source "${SCRIPT_DIR}/lib/preflight.sh"
 
 APP_NAME="n8n"
 CONTAINER_NAME="n8n"
@@ -22,6 +23,11 @@ log_info "═══════════════════════�
 log_info "  Installing n8n Workflow Automation"
 log_info "═══════════════════════════════════════════"
 echo ""
+
+audit_log "INSTALL_START" "$APP_NAME"
+
+# Pre-flight checks
+preflight_check "$APP_NAME" 10 2 "5678"
 
 # Check dependencies
 log_step "Step 1: Checking dependencies"
@@ -192,6 +198,8 @@ run_sudo docker exec postgres psql -U "$POSTGRES_USER" -c "GRANT ALL PRIVILEGES 
 save_secret "$APP_NAME" "DB_NAME" "$N8N_DB_NAME"
 save_secret "$APP_NAME" "DB_USER" "$N8N_DB_USER"
 save_secret "$APP_NAME" "DB_PASSWORD" "$N8N_DB_PASSWORD"
+
+audit_log "CREATE_DATABASE" "$APP_NAME" "DB: $N8N_DB_NAME in PostgreSQL"
 
 log_success "Database created: $N8N_DB_NAME"
 log_success "User created: $N8N_DB_USER"
@@ -419,6 +427,7 @@ echo ""
 log_success "═══════════════════════════════════════════"
 log_success "  n8n Installation Complete!"
 log_success "═══════════════════════════════════════════"
+audit_log "INSTALL_COMPLETE" "$APP_NAME" "Domain: $N8N_DOMAIN, DB: $N8N_DB_NAME"
 echo ""
 
 display_connection_info "$APP_NAME" "N8N_USER" "N8N_PASSWORD"

@@ -87,6 +87,9 @@ run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network vps_network \
+    --cpus="2" \
+    --memory="2g" \
+    --memory-reservation="512m" \
     -e MONGO_INITDB_ROOT_USERNAME="$MONGO_INITDB_ROOT_USERNAME" \
     -e MONGO_INITDB_ROOT_PASSWORD="$MONGO_INITDB_ROOT_PASSWORD" \
     -v "${DATA_DIR}/data:/data/db" \

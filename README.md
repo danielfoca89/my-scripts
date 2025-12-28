@@ -1,6 +1,6 @@
 # VPS Orchestrator
 
-> Smart VPS management system with **automatic dependency resolution** and deployment of 20 production-ready applications
+> Production-ready VPS management system with **automatic dependency resolution**, **health monitoring**, **audit logging**, and **security-first** deployment of 20+ applications
 
 ## Quick Start
 
@@ -87,7 +87,60 @@ cd my-scripts
 - ✅ **run_sudo() wrapper** - all scripts use universal sudo function that works as root or non-root
 - ✅ **Works everywhere** - SUDO_PASS environment variable, interactive prompts, or direct execution
 
-## Key Features
+## Production Features
+
+### 🔍 Audit Logging System
+- **Comprehensive logging** - All installations, updates, backups tracked
+- **Secure storage** - `~/.vps-secrets/.audit.log` (chmod 600)
+- **Structured format** - `[TIMESTAMP] ACTION APP_NAME by USER - DETAILS - RESULT`
+- **Events tracked**:
+  - Installation start/complete
+  - Database creation
+  - Credential backups
+  - Database backups
+  - VPS setup lifecycle
+  - Container updates
+
+**View audit log:**
+```bash
+cat ~/.vps-secrets/.audit.log
+tail -f ~/.vps-secrets/.audit.log  # Live monitoring
+```
+
+### ⚡ Pre-flight Checks
+- **Resource validation** before installation
+- **Checks**: Disk space, RAM availability, port conflicts
+- **Interactive prompts** - User confirmation before proceeding
+- **Prevents failures** - Catches issues before installation starts
+
+**Integrated in:**
+- n8n: 10GB disk, 2GB RAM, port 5678
+- PostgreSQL: 15GB disk, 2GB RAM, port 5432
+- Docker Engine: 20GB disk, 4GB RAM
+
+### 🛡️ Docker Resource Limits
+- **Database containers** protected from resource exhaustion
+- **Limits applied**:
+  - PostgreSQL: 2 CPU cores, 2GB RAM (512MB guaranteed)
+  - MariaDB: 2 CPU cores, 2GB RAM (512MB guaranteed)
+  - MongoDB: 2 CPU cores, 2GB RAM (512MB guaranteed)
+- **Benefits**: Prevents OOM, protects other services, stable performance
+
+### 🔐 SSL Certificate Monitoring
+- **Certbot timer status** - Active/inactive monitoring
+- **Expiry tracking** - Days remaining calculation
+- **Status levels**: 
+  - OK: >30 days
+  - WARNING: <30 days
+  - CRITICAL: <7 days
+- **Auto-renewal verification** - Alerts if certbot timer is disabled
+
+### 📊 Web Dashboard
+- **Nginx integrated** - Auto-configured during Nginx installation
+- **Basic Auth** - Username/password protection
+- **Visual monitoring** - Progress bars, status badges, color-coded alerts
+- **Auto-updates** - Cron job updates every 2 minutes
+- **Mobile responsive** - Works on all devices
 
 ### 🚀 Smart Dependency Management
 - **AutomaALL apps with status** - `[✓ Installed]` marker for installed apps
@@ -123,32 +176,72 @@ Universal sudo support** - works on all distributions
 - **Firewall configuration** (UFW/firewalld)
 - **Native installations** for critical services (Nginx, Redis, Certbot, WireGuard)
 
-### ✅ Battle-Tested
-- All 20 applications fully implemented and tested
-- Comprehensive error handling (`set -euo pipefail`)
-- Mixed deployments: Docker + native installations
-- Health checks and auto-restart policies
-- Zero placeholders - everything functional
+## Repository Structure
+
 ```
 my-scripts/
-├── orchestrator.sh              # Smart orchestrator with dependency checking
-├── lib/                         # Core libraries (4 modules)
-│   ├── utils.sh                # Logging & system helpers
-│   ├── secrets.sh              # Credential management
-│   ├── docker.sh               # Docker operations
-│   └── os-detect.sh            # Universal OS detection & abstraction
-├── apps/                        # 20 application installers
-│   ├── infrastructure/         # Docker, Nginx*, Portainer, Certbot*, Arcane
-│   ├── databases/              # PostgreSQL, MariaDB, MongoDB, Redis*
-│   ├── monitoring/             # Grafana, Prometheus, Netdata, Uptime Kuma
-│   ├── automation/             # n8n (with SSL automation)
-│   ├── security/               # WireGuard*, Fail2ban, Security Audit
-│   └── system/                 # VPS Setup, Node.js, Log Maintenance
-├── config/                      # Configuration files
-│   ├── apps.conf               # Application metadata + dependencies
-│   └── categories.conf         # Category definitions
-├── templates/                   # Docker Compose templates
-└── workflows/                   # Multi-step workflows
+├── orchestrator.sh                    # Smart orchestrator with dependency resolution
+│
+├── lib/                               # Core libraries (5 modules)
+│   ├── utils.sh                      # Logging, audit system, helpers
+│   ├── secrets.sh                    # Credential management & encryption
+│   ├── docker.sh                     # Docker operations
+│   ├── os-detect.sh                  # Universal OS detection & abstraction
+│   └── preflight.sh                  # Pre-installation resource checks
+│
+├── apps/                              # Application installers (20+)
+│   ├── infrastructure/               # Core infrastructure
+│   │   ├── docker-engine/           # Container runtime
+│   │   ├── nginx/                   # Reverse proxy (native) + dashboard setup
+│   │   ├── portainer/               # Docker management UI
+│   │   ├── certbot/                 # SSL automation (native)
+│   │   └── arcane/                  # Modern Docker UI
+│   │
+│   ├── databases/                    # Database services
+│   │   ├── postgres/                # PostgreSQL (with resource limits)
+│   │   ├── mariadb/                 # MariaDB (with resource limits)
+│   │   ├── mongodb/                 # MongoDB (with resource limits)
+│   │   └── redis/                   # Redis cache (native)
+│   │
+│   ├── monitoring/                   # Monitoring & observability
+│   │   ├── grafana/                 # Visualization dashboards
+│   │   ├── prometheus/              # Metrics collection
+│   │   ├── netdata/                 # Real-time monitoring
+│   │   └── uptime-kuma/             # Uptime monitoring
+│   │
+│   ├── automation/                   # Workflow automation
+│   │   └── n8n/                     # Workflow engine with SSL
+│   │
+│   ├── security/                     # Security tools
+│   │   ├── wireguard/               # VPN (native, kernel module)
+│   │   ├── fail2ban/                # Intrusion prevention
+│   │   └── security-audit/          # Vulnerability scanning
+│   │
+│   └── system/                       # System utilities
+│       ├── setup-vps/               # Server hardening workflow
+│       ├── nodejs/                  # Node.js via NVM
+│       └── log-maintenance/         # Log rotation & cleanup
+│
+├── tools/                             # Management & monitoring tools
+│   ├── health-check.sh               # System status & HTML dashboard
+│   ├── setup-dashboard.sh            # Dashboard setup with Nginx Basic Auth
+│   ├── backup-credentials.sh         # Credentials backup & restore
+│   ├── backup-databases.sh           # Database backup & restore
+│   └── update.sh                     # Container update manager
+│
+├── workflows/                         # Multi-step workflows
+│   ├── install-apps.yml              # Batch application installation
+│   └── vps-enterprise-base.yml       # Enterprise VPS setup
+│
+├── config/                            # Configuration files
+│   ├── apps.conf                     # Application metadata + dependencies
+│   └── categories.conf               # Category definitions
+│
+├── templates/                         # Docker Compose templates
+│
+└── yml-host/                          # Docker Compose files & configs
+    ├── *.yml                         # Official compose files
+    └── nginx/                        # Nginx site configurations
 
 * = Native installation (not Docker)
 ```
@@ -241,58 +334,121 @@ You can also run installers directly without the orchestrator:
 
 ## Statistics
 
-- **6,000+ lines** of production bash code
-- **20 applications** fully implemented and tested
-- **4 core libraries** (utils, secrets, docker, os-detect)
+- **6,500+ lines** of production bash code
+- **20+ applications** fully implemented and tested
+- **5 core libraries** (utils, secrets, docker, os-detect, preflight)
+- **5 management tools** (health-check, dashboard, backup x2, update)
 - **Universal OS support** - Debian, Ubuntu, AlmaLinux, Rocky, Fedora, CentOS
-- **Universal sudo** - auto-installs and configures sudo/wheel groups correctly
-- **Smart dependency resolution** - auto-install full chain with clear status
-- **Random database names** - security through unpredictability
+- **Universal sudo** - auto-installs and configures sudo/wheel groups
+- **Smart dependency resolution** - recursive auto-install with status tracking
+- **Random database credentials** - security through unpredictability
 - **4 native installers** (Nginx, Redis, Certbot, WireGuard)
 - **Automatic SSL** configuration for domain-based apps
-- **PostgreSQL shared service** pattern
-- **Consistent UX** - all apps show `✓` for success, clear dependency messages
+- **PostgreSQL shared service** with isolated databases per app
+- **Docker resource limits** for databases (CPU + RAM)
+- **Audit logging system** for compliance and troubleshooting
+- **Pre-flight checks** prevent installation failures
+- **Container update manager** with safe rollback capability
+- **SSL monitoring** with expiry alerts
+- **Web dashboard** with Nginx Basic Auth
+- **Consistent UX** - all apps show `✓` for success, clear messaging
 - **Zero placeholders** - 100% functional
 - **100% syntax validated** ✅
-- **40+ security enhancements** in December 2025 - production-ready
+- **50+ production features** - December 2025 release
 
 ## Security Best Practices
 
-✅ Auto-generated strong passwords (32-64 chars)  
+✅ **Auto-generated strong passwords** (32-64 chars)  
 ✅ **Random database names** - `db_a3k9m2x7p5q1` (PostgreSQL, MariaDB, MongoDB, n8n)  
 ✅ **Random usernames** - `user_x8n4k2m9p7q5` (all databases + Grafana admin)  
 ✅ **No default credentials** - PostgreSQL, Grafana use random usernames  
-✅ Encrypted credential storage (600/700 permissions)  
-✅ Universal sudo support (auto-installs, correct groups)  
-✅ Password-based SSH with su - for root access  
-✅ Universal firewall support (UFW/firewalld auto-detected)  
-✅ Docker network isolation (vps_network)  
-✅ Fail2ban intrusion prevention  
-✅ Regular security audits via Trivy  
-✅ SSL/TLS certificate automation (Let's Encrypt)  
-✅ HTTPS enforcement with Nginx reverse proxy  
-✅ Database isolation (each app has own DB/user)  
-✅ Native installations for critical services  
-✅ All privileged commands use run_sudo wrapper
+✅ **Encrypted credential storage** (`~/.vps-secrets/` with 600/700 permissions)  
+✅ **Audit logging** - All critical operations tracked in `~/.vps-secrets/.audit.log`  
+✅ **Resource limits** - Database containers protected from resource exhaustion  
+✅ **Pre-flight checks** - Validation before installation prevents failures  
+✅ **Universal sudo support** (auto-installs, correct groups)  
+✅ **Password-based SSH** with `su -` for root access  
+✅ **Universal firewall support** (UFW/firewalld auto-detected)  
+✅ **Docker network isolation** (vps_network)  
+✅ **Fail2ban intrusion prevention**  
+✅ **Regular security audits** via Trivy  
+✅ **SSL/TLS certificate automation** (Let's Encrypt)  
+✅ **HTTPS enforcement** with Nginx reverse proxy  
+✅ **Database isolation** (each app has own DB/user)  
+✅ **Native installations** for critical services  
+✅ **Dashboard Basic Auth** - Protected web monitoring  
+✅ **SSL expiry monitoring** - Automatic certificate tracking  
+✅ **All privileged commands** use `run_sudo` wrapper
 
 ## Management Tools
 
-### Health Check
+### Health Check & Dashboard
 
-Check status of all services, containers, and system resources:
+Monitor all services with terminal output or web dashboard:
 
 ```bash
+# Terminal output
 ./tools/health-check.sh
+
+# Generate HTML dashboard
+sudo ./tools/health-check.sh --html /var/www/html/status.html
 ```
 
-Output includes:
-- System resources (disk, memory, CPU)
-- Docker containers status
-- Native services status
+**Web Dashboard Features:**
+- 🔒 **Basic Auth protected** (auto-configured with Nginx)
+- 📊 **Real-time stats** - CPU, RAM, Disk with visual progress bars
+- 🐳 **Container status** - Running/stopped with health checks
+- 🔐 **SSL monitoring** - Certificate expiry with WARNING/CRITICAL alerts
+- 💾 **Backup status** - Credentials and database backup counts
+- 🔄 **Auto-refresh** - Browser: 30 sec, Server cron: 2 min
+- 🎨 **Modern UI** - Responsive design with gradient colors
+
+**Dashboard Setup** (automatically runs with Nginx installer):
+```bash
+# Manual setup
+sudo ./tools/setup-dashboard.sh
+
+# Access dashboard
+# URL: http://your-ip/status.html
+# Credentials: ~/.vps-secrets/.env_dashboard
+```
+
+**Dashboard output includes:**
+- System resources (disk, memory, CPU) with color-coded progress bars
+- Docker containers (status, health)
+- Native services (nginx, redis, fail2ban)
 - Network ports
 - Credentials count
-- SSL certificates expiry
-- Backup status
+- SSL certificates expiry (with days remaining)
+- Backup status (credentials + databases)
+
+### Container Update Manager
+
+Update Docker containers safely with preserved data:
+
+```bash
+# List all containers
+./tools/update.sh list
+
+# Update single container
+./tools/update.sh update <container-name>
+# Examples:
+./tools/update.sh update n8n
+./tools/update.sh update postgres
+
+# Update all containers
+./tools/update.sh update-all
+```
+
+**Features:**
+- ✅ Uses docker-compose.yml when available
+- ✅ Preserves volumes and credentials
+- ✅ Verifies health after update
+- ✅ Audit logging for all updates
+- ✅ Safe pull → stop → remove → recreate workflow
+
+**Supported containers:**
+n8n, postgres, mariadb, mongodb, grafana, prometheus, portainer, arcane, redis, netdata, uptime-kuma
 
 ### Backup Credentials
 
@@ -356,8 +512,65 @@ crontab -e
 # Database backup daily at 3 AM
 0 3 * * * /path/to/my-scripts/tools/backup-databases.sh all
 
-# Health check twice daily
-0 8,20 * * * /path/to/my-scripts/tools/health-check.sh > /var/log/vps-health.log
+# Dashboard update every 2 minutes (auto-configured by setup-dashboard.sh)
+*/2 * * * * /path/to/my-scripts/tools/health-check.sh --html /var/www/html/status.html
+```
+
+## Quick Reference
+
+### View Credentials
+```bash
+# List all credentials
+ls -la ~/.vps-secrets/
+
+# View specific app credentials
+cat ~/.vps-secrets/.env_n8n
+cat ~/.vps-secrets/.env_postgres
+cat ~/.vps-secrets/.env_dashboard
+
+# View audit log
+tail -f ~/.vps-secrets/.audit.log
+```
+
+### Container Management
+```bash
+# List containers
+docker ps -a
+
+# Update container
+./tools/update.sh update n8n
+
+# View logs
+docker logs n8n -f
+
+# Restart container
+docker restart n8n
+```
+
+### Dashboard Access
+```bash
+# View dashboard credentials
+cat ~/.vps-secrets/.env_dashboard
+
+# Manual dashboard update
+sudo ./tools/health-check.sh --html
+
+# Access URL: http://your-ip/status.html
+```
+
+### System Status
+```bash
+# Health check
+./tools/health-check.sh
+
+# Check SSL certificates
+certbot certificates
+
+# View Nginx status
+sudo systemctl status nginx
+
+# View Docker status
+sudo systemctl status docker
 ```
 
 ## Troubleshooting

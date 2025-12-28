@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
 source "${SCRIPT_DIR}/lib/docker.sh"
+source "${SCRIPT_DIR}/lib/preflight.sh"
 
 APP_NAME="postgres"
 CONTAINER_NAME="postgres"
@@ -18,6 +19,11 @@ log_info "═══════════════════════�
 log_info "  Installing PostgreSQL Database"
 log_info "═══════════════════════════════════════════"
 echo ""
+
+audit_log "INSTALL_START" "$APP_NAME"
+
+# Pre-flight checks
+preflight_check "$APP_NAME" 15 2 "5432"
 
 # Check dependency
 log_step "Step 1: Checking dependencies"
@@ -73,6 +79,9 @@ run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network vps_network \
+    --cpus="2" \
+    --memory="2g" \
+    --memory-reservation="512m" \
     -e POSTGRES_PASSWORD="$DB_PASSWORD" \
     -e POSTGRES_USER="$POSTGRES_USER" \
     -e POSTGRES_DB="$POSTGRES_DB" \

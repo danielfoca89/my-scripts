@@ -45,6 +45,7 @@ backup_credentials() {
         chmod 600 "$backup_file"
         log_success "Credentials backed up to: $backup_file"
         log_info "Backed up $cred_count credential files"
+        audit_log "BACKUP_CREDENTIALS" "system" "$cred_count files backed up"
         return 0
     else
         log_error "Backup failed"

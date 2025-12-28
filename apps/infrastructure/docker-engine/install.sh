@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/os-detect.sh"
 source "${SCRIPT_DIR}/lib/docker.sh"
+source "${SCRIPT_DIR}/lib/preflight.sh"
 
 APP_NAME="docker-engine"
 
@@ -16,6 +17,11 @@ log_info "═══════════════════════�
 log_info "  Installing Docker Engine"
 log_info "═══════════════════════════════════════════"
 echo ""
+
+audit_log "INSTALL_START" "$APP_NAME"
+
+# Pre-flight checks
+preflight_check "$APP_NAME" 20 4 ""
 
 # Check if already installed
 if check_docker; then
@@ -120,6 +126,7 @@ echo ""
 log_success "═══════════════════════════════════════════"
 log_success "  Docker Engine installed successfully!"
 log_success "═══════════════════════════════════════════"
+audit_log "INSTALL_COMPLETE" "$APP_NAME" "Docker $(run_sudo docker --version | awk '{print $3}' | tr -d ',')"
 echo ""
 log_info "Docker Version:"
 run_sudo docker --version

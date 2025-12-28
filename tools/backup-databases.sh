@@ -57,6 +57,7 @@ backup_postgres() {
         # Show backup size
         local size=$(du -h "${backup_file}.gz" | cut -f1)
         log_info "Backup size: $size"
+        audit_log "BACKUP_DATABASE" "postgres" "Size: $size"
         return 0
     else
         log_error "PostgreSQL backup failed"
@@ -96,6 +97,7 @@ backup_mariadb() {
         
         local size=$(du -h "${backup_file}.gz" | cut -f1)
         log_info "Backup size: $size"
+        audit_log "BACKUP_DATABASE" "mariadb" "Size: $size"
         return 0
     else
         log_error "MariaDB backup failed"
@@ -140,6 +142,7 @@ backup_mongodb() {
         
         local size=$(du -h "${backup_dir}.tar.gz" | cut -f1)
         log_info "Backup size: $size"
+        audit_log "BACKUP_DATABASE" "mongodb" "Size: $size"
         return 0
     else
         log_error "MongoDB backup failed"

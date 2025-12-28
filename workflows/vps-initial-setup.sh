@@ -52,6 +52,9 @@ EOF
     echo ""
     log_info "Detected OS: $(get_os_info)"
     echo ""
+    
+    # Initialize audit logging
+    audit_log "VPS_SETUP_START" "system" "$(get_os_info)"
 }
 
 # Gather user input
@@ -660,6 +663,7 @@ main() {
         log_success "SSH service restarted successfully!"
         echo ""
         log_success "✓ Setup Complete! SSH is now on port $SSH_PORT"
+        audit_log "VPS_SETUP_COMPLETE" "system" "User: $NEW_USER, SSH Port: $SSH_PORT"
         echo ""
         log_warn "This session will now close."
         log_info "Reconnect with: ssh $NEW_USER@$(hostname -I | awk '{print $1}') -p $SSH_PORT"
@@ -668,6 +672,7 @@ main() {
         exit 0
     else
         log_error "Failed to restart SSH!"
+        audit_log "VPS_SETUP_FAILED" "system" "SSH restart failed" "FAILED"
         log_error "Configuration is still in place, but SSH may not be running"
         log_warn "Use VPS console to check: systemctl status $SSH_SERVICE"
         exit 1

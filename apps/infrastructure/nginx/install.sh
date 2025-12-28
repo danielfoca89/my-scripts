@@ -375,4 +375,14 @@ echo "  • Update firewall: sudo ufw allow 'Nginx Full'"
 echo "  • Review security settings in snippets/security.conf"
 echo ""
 
+# Setup dashboard
+log_step "Step 9: Setting up health dashboard"
+if [ -f "${SCRIPT_DIR}/tools/setup-dashboard.sh" ]; then
+    run_sudo bash "${SCRIPT_DIR}/tools/setup-dashboard.sh"
+    log_success "Health dashboard configured"
+else
+    log_warn "Dashboard setup script not found at ${SCRIPT_DIR}/tools/setup-dashboard.sh"
+fi
+echo ""
+
 read -p "Press Enter to continue..."

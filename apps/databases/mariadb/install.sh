@@ -85,6 +85,9 @@ run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network vps_network \
+    --cpus="2" \
+    --memory="2g" \
+    --memory-reservation="512m" \
     -e MARIADB_ROOT_PASSWORD="$MARIADB_ROOT_PASSWORD" \
     -e MARIADB_DATABASE="$MARIADB_DATABASE" \
     -e MARIADB_USER="$MARIADB_USER" \
