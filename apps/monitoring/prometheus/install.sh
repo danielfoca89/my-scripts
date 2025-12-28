@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
@@ -146,7 +148,7 @@ echo ""
 log_step "Step 5: Deploying Prometheus container"
 log_info "Starting Prometheus..."
 
-docker run -d \
+run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network vps_network \

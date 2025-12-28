@@ -104,27 +104,27 @@ if command -v docker &> /dev/null; then
     log_msg "Starting Docker cleanup"
     
     # Remove stopped containers
-    STOPPED=$(docker ps -aq -f status=exited 2>/dev/null | wc -l)
+    STOPPED=$(run_sudo docker ps -aq -f status=exited 2>/dev/null | wc -l)
     if [ "$STOPPED" -gt 0 ]; then
-        docker rm $(docker ps -aq -f status=exited) >/dev/null 2>&1 || true
+        run_sudo docker rm $(run_sudo docker ps -aq -f status=exited) >/dev/null 2>&1 || true
         echo -e "  ${GREEN}✓ Removed $STOPPED stopped containers${NC}"
         log_msg "Removed $STOPPED stopped containers"
     fi
     
     # Remove dangling images
-    DANGLING=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l)
+    DANGLING=$(run_sudo docker images -f "dangling=true" -q 2>/dev/null | wc -l)
     if [ "$DANGLING" -gt 0 ]; then
-        docker rmi $(docker images -f "dangling=true" -q) >/dev/null 2>&1 || true
+        run_sudo docker rmi $(run_sudo docker images -f "dangling=true" -q) >/dev/null 2>&1 || true
         echo -e "  ${GREEN}✓ Removed $DANGLING dangling images${NC}"
         log_msg "Removed $DANGLING dangling images"
     fi
     
     # Prune everything older than 30 days
     echo -e "  ${BLUE}Pruning Docker resources older than 30 days...${NC}"
-    docker system prune -af --filter "until=720h" >/dev/null 2>&1 || true
+    run_sudo docker system prune -af --filter "until=720h" >/dev/null 2>&1 || true
     
     # Clean build cache
-    docker builder prune -af --filter "until=720h" >/dev/null 2>&1 || true
+    run_sudo docker builder prune -af --filter "until=720h" >/dev/null 2>&1 || true
     
     echo -e "  ${GREEN}✓ Docker cleanup complete${NC}"
     log_msg "Docker cleanup complete"
@@ -214,7 +214,7 @@ echo ""
 
 if command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker disk usage:${NC}"
-    docker system df
+    run_sudo docker system df
     echo ""
 fi
 

@@ -16,6 +16,7 @@ OS_ID=""
 OS_VERSION=""
 OS_FAMILY=""
 PACKAGE_MANAGER=""
+OS_TYPE=""  # Alias for OS_ID
 
 # Detect operating system
 detect_os() {
@@ -51,6 +52,9 @@ detect_os() {
                 PACKAGE_MANAGER="unknown"
                 ;;
         esac
+        
+        # Set OS_TYPE as alias for OS_ID (backward compatibility)
+        OS_TYPE="$OS_ID"
     else
         echo "ERROR: Cannot detect OS - /etc/os-release not found"
         exit 1

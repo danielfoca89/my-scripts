@@ -41,7 +41,7 @@ echo ""
 # Pull security tools
 log_step "Step 3: Downloading security scanning tools"
 log_info "Pulling Trivy (vulnerability scanner)..."
-docker pull aquasec/trivy:latest
+run_sudo docker pull aquasec/trivy:latest
 log_success "Trivy downloaded"
 echo ""
 
@@ -75,11 +75,11 @@ echo ""
     # Docker image scanning
     echo "1. DOCKER IMAGE VULNERABILITY SCAN"
     echo "-----------------------------------"
-    IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | head -20)
+    IMAGES=$(run_sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | head -20)
     if [ -n "$IMAGES" ]; then
         while IFS= read -r image; do
             echo "Scanning: $image"
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            run_sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                 aquasec/trivy image --severity HIGH,CRITICAL --no-progress "$image" 2>&1 || true
             echo ""
         done <<< "$IMAGES"
@@ -91,7 +91,7 @@ echo ""
     # Running containers check
     echo "2. RUNNING CONTAINERS"
     echo "----------------------"
-    docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>&1 || echo "Error checking containers"
+    run_sudo docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>&1 || echo "Error checking containers"
     echo ""
 
     # System security checks
@@ -170,7 +170,7 @@ while IFS= read -r image; do
     echo "=================================="
     echo "Scanning: $image"
     echo "=================================="
-    docker run --rm \
+    run_sudo docker run --rm \
         -v /var/run/docker.sock:/var/run/docker.sock \
         aquasec/trivy image \
         --severity "$SEVERITY" \

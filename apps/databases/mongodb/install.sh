@@ -5,6 +5,8 @@
 # Deploys MongoDB in Docker container with auto-generated credentials
 # ==============================================================================
 
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/secrets.sh"
@@ -194,7 +196,7 @@ fi
 load_secrets "$APP_NAME"
 
 # Deploy
-docker run -d \
+run_sudo docker run -d \
     --name $APP_NAME \
     --restart unless-stopped \
     --network vps_network \

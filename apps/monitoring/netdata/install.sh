@@ -96,7 +96,7 @@ echo ""
 log_step "Step 5: Deploying Netdata container"
 log_info "This requires host system access for accurate monitoring..."
 
-docker run -d \
+run_sudo docker run -d \
     --name "$CONTAINER_NAME" \
     --restart unless-stopped \
     --network "$NETWORK" \
@@ -136,7 +136,7 @@ while [ $COUNT -lt $RETRIES ]; do
     COUNT=$((COUNT + 1))
     if [ $COUNT -eq $RETRIES ]; then
         log_error "Netdata failed to become ready"
-        docker logs $CONTAINER_NAME --tail 50
+        run_sudo docker logs $CONTAINER_NAME --tail 50
         exit 1
     fi
     sleep 2

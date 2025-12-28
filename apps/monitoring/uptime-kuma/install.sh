@@ -118,7 +118,7 @@ while [ $COUNT -lt $RETRIES ]; do
     COUNT=$((COUNT + 1))
     if [ $COUNT -eq $RETRIES ]; then
         log_error "Uptime Kuma failed to become ready"
-        docker logs $CONTAINER_NAME --tail 50
+        run_sudo docker logs $CONTAINER_NAME --tail 50
         exit 1
     fi
     sleep 2
