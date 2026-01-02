@@ -7,6 +7,12 @@
 
 set -euo pipefail
 
+# Source required libraries
+DOCKER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${DOCKER_LIB_DIR}/utils.sh" ]; then
+    source "${DOCKER_LIB_DIR}/utils.sh"
+fi
+
 # Check if Docker is installed and running
 check_docker() {
     if ! command -v docker &> /dev/null; then

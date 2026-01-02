@@ -7,6 +7,12 @@
 
 set -euo pipefail
 
+# Source required libraries
+SECRETS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SECRETS_LIB_DIR}/utils.sh" ]; then
+    source "${SECRETS_LIB_DIR}/utils.sh"
+fi
+
 readonly SECRETS_DIR="${HOME}/.vps-secrets"
 readonly BACKUP_DIR="${SECRETS_DIR}/.backup"
 readonly INDEX_FILE="${SECRETS_DIR}/.secrets_index.json"

@@ -7,6 +7,15 @@
 
 set -euo pipefail
 
+# Source required libraries
+PREFLIGHT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${PREFLIGHT_LIB_DIR}/utils.sh" ]; then
+    source "${PREFLIGHT_LIB_DIR}/utils.sh"
+fi
+if [ -f "${PREFLIGHT_LIB_DIR}/os-detect.sh" ]; then
+    source "${PREFLIGHT_LIB_DIR}/os-detect.sh"
+fi
+
 # Check if enough disk space is available
 # Args: $1 = required_gb
 check_disk_space() {
