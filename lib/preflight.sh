@@ -79,9 +79,7 @@ check_port_available() {
              return 0
         fi
     fi
-        # Cannot check, assume available
-        return 0
-    fi
+
     
     return 0
 }
