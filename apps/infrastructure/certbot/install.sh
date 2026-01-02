@@ -176,7 +176,7 @@ echo ""
 log_step "Step 6: Configuring automatic renewal"
 
 # Check if systemd timer exists (most modern systems)
-if systemctl list-unit-files | grep -q certbot.timer; then
+if run_sudo systemctl list-unit-files | grep -q certbot.timer; then
     run_sudo systemctl enable certbot.timer
     run_sudo systemctl start certbot.timer
     log_success "Systemd timer configured for automatic renewal"

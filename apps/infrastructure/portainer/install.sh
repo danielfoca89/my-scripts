@@ -29,14 +29,37 @@ log_success "✓ Docker is available"
 echo ""
 
 if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "Portainer container already exists"
-    if confirm_action "Do you want to reinstall Portainer?"; then
-        log_info "Stopping and removing existing container..."
-        run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
-        run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
+    if run_sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        log_warn "Portainer is already running"
+        if confirm_action "Reinstall? (This will remove current data/config)"; then
+            log_info "Stopping and removing existing container..."
+            run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
+            run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        else
+            log_info "Installation cancelled"
+            echo ""
+            log_info "Access Information:"
+            SERVER_IP=$(hostname -I | awk '{print $1}')
+            echo "  HTTP:  http://${SERVER_IP}:9000"
+            echo "  HTTPS: https://${SERVER_IP}:9443"
+            exit 0
+        fi
     else
-        log_info "Installation cancelled"
-        exit 0
+        log_warn "Portainer container exists but is STOPPED"
+        if confirm_action "Start Portainer instead of reinstalling?"; then
+             log_info "Starting Portainer..."
+             run_sudo docker start "$CONTAINER_NAME"
+             log_success "Portainer started successfully"
+             echo ""
+             log_info "Access Information:"
+             SERVER_IP=$(hostname -I | awk '{print $1}')
+             echo "  HTTP:  http://${SERVER_IP}:9000"
+             echo "  HTTPS: https://${SERVER_IP}:9443"
+             exit 0
+        else
+            log_info "Removing old container to reinstall..."
+            run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
+        fi
     fi
 fi
 

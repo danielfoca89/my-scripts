@@ -105,27 +105,27 @@ if command -v docker &> /dev/null; then
     log_msg "Starting Docker cleanup"
     
     # Remove stopped containers
-    STOPPED=$(run_sudo docker ps -aq -f status=exited 2>/dev/null | wc -l)
+    STOPPED=$(sudo docker ps -aq -f status=exited 2>/dev/null | wc -l)
     if [ "$STOPPED" -gt 0 ]; then
-        run_sudo docker rm $(run_sudo docker ps -aq -f status=exited) >/dev/null 2>&1 || true
+        sudo docker rm $(sudo docker ps -aq -f status=exited) >/dev/null 2>&1 || true
         echo -e "  ${GREEN}✓ Removed $STOPPED stopped containers${NC}"
         log_msg "Removed $STOPPED stopped containers"
     fi
     
     # Remove dangling images
-    DANGLING=$(run_sudo docker images -f "dangling=true" -q 2>/dev/null | wc -l)
+    DANGLING=$(sudo docker images -f "dangling=true" -q 2>/dev/null | wc -l)
     if [ "$DANGLING" -gt 0 ]; then
-        run_sudo docker rmi $(run_sudo docker images -f "dangling=true" -q) >/dev/null 2>&1 || true
+        sudo docker rmi $(sudo docker images -f "dangling=true" -q) >/dev/null 2>&1 || true
         echo -e "  ${GREEN}✓ Removed $DANGLING dangling images${NC}"
         log_msg "Removed $DANGLING dangling images"
     fi
     
     # Prune everything older than 30 days
     echo -e "  ${BLUE}Pruning Docker resources older than 30 days...${NC}"
-    run_sudo docker system prune -af --filter "until=720h" >/dev/null 2>&1 || true
+    sudo docker system prune -af --filter "until=720h" >/dev/null 2>&1 || true
     
     # Clean build cache
-    run_sudo docker builder prune -af --filter "until=720h" >/dev/null 2>&1 || true
+    sudo docker builder prune -af --filter "until=720h" >/dev/null 2>&1 || true
     
     echo -e "  ${GREEN}✓ Docker cleanup complete${NC}"
     log_msg "Docker cleanup complete"
@@ -136,16 +136,16 @@ fi
 echo -e "${BLUE}5. Cleaning package manager cache...${NC}"
 log_msg "Cleaning package manager cache"
 if command -v apt-get &> /dev/null; then
-    run_sudo apt-get autoremove -y >/dev/null 2>&1 || true
-    run_sudo apt-get autoclean -y >/dev/null 2>&1 || true
+    sudo apt-get autoremove -y >/dev/null 2>&1 || true
+    sudo apt-get autoclean -y >/dev/null 2>&1 || true
     echo -e "  ${GREEN}✓ APT cache cleaned${NC}"
     log_msg "APT cache cleaned"
 elif command -v yum &> /dev/null; then
-    run_sudo yum clean all >/dev/null 2>&1 || true
+    sudo yum clean all >/dev/null 2>&1 || true
     echo -e "  ${GREEN}✓ YUM cache cleaned${NC}"
     log_msg "YUM cache cleaned"
 elif command -v dnf &> /dev/null; then
-    run_sudo dnf clean all >/dev/null 2>&1 || true
+    sudo dnf clean all >/dev/null 2>&1 || true
     echo -e "  ${GREEN}✓ DNF cache cleaned${NC}"
     log_msg "DNF cache cleaned"
 fi
@@ -215,7 +215,7 @@ echo ""
 
 if command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker disk usage:${NC}"
-    run_sudo docker system df
+    sudo docker system df
     echo ""
 fi
 

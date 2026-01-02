@@ -67,10 +67,33 @@ create_docker_network "vps_network"
 log_step "Step 4: Creating data directories"
 create_app_directory "$DATA_DIR/data" 755
 
-# Remove existing container if present
+# Check if already installed
 if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_info "Removing existing container..."
-    remove_container "$CONTAINER_NAME"
+    if run_sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        log_warn "Postgres container is already running"
+        if confirm_action "Reinstall? (This will stop the DB and remove container)"; then
+            log_info "Stopping and removing existing container..."
+            remove_container "$CONTAINER_NAME"
+        else
+            log_info "Installation cancelled"
+            echo ""
+            log_info "Connection String (external):"
+            SERVER_IP=$(hostname -I | awk '{print $1}')
+            echo "  postgresql://${POSTGRES_USER}:[PASSWORD]@${SERVER_IP}:5432/${POSTGRES_DB}"
+            exit 0
+        fi
+    else
+        log_warn "Postgres container exists but is STOPPED"
+        if confirm_action "Start Postgres instead of reinstalling?"; then
+             log_info "Starting Postgres..."
+             run_sudo docker start "$CONTAINER_NAME"
+             log_success "Postgres started successfully"
+             exit 0
+        else
+            log_info "Removing old container to reinstall..."
+            remove_container "$CONTAINER_NAME"
+        fi
+    fi
 fi
 
 # Deploy container

@@ -34,18 +34,26 @@ echo ""
 
 # Check if already installed
 if run_sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log_warn "MariaDB container already exists"
-    
-    if has_credentials "$APP_NAME"; then
-        log_info "Using existing credentials from ~/.vps-secrets/.env_${APP_NAME}"
-        
-        if confirm_action "Do you want to reinstall MariaDB?"; then
+    if run_sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        log_warn "MariaDB is already running"
+        if confirm_action "Reinstall? (This will stop the DB and remove container)"; then
             log_info "Stopping and removing existing container..."
             run_sudo docker stop "$CONTAINER_NAME" 2>/dev/null || true
             run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
         else
             log_info "Installation cancelled"
             exit 0
+        fi
+    else
+        log_warn "MariaDB container exists but is STOPPED"
+        if confirm_action "Start MariaDB instead of reinstalling?"; then
+             log_info "Starting MariaDB..."
+             run_sudo docker start "$CONTAINER_NAME"
+             log_success "MariaDB started successfully"
+             exit 0
+        else
+            log_info "Removing old container to reinstall..."
+            run_sudo docker rm "$CONTAINER_NAME" 2>/dev/null || true
         fi
     fi
 fi
