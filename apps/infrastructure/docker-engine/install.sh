@@ -75,8 +75,23 @@ log_step "Step 3: Installing Docker Engine"
 pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 log_step "Step 4: Starting Docker service"
+log_info "Starting and enabling Docker daemon..."
 run_sudo systemctl start docker
 run_sudo systemctl enable docker
+
+# Wait for Docker to be ready
+log_info "Waiting for Docker daemon to be ready..."
+sleep 3
+
+# Verify Docker is running
+if ! run_sudo docker info &> /dev/null; then
+    log_error "Docker daemon failed to start"
+    log_info "Checking Docker service status..."
+    run_sudo systemctl status docker --no-pager || true
+    exit 1
+fi
+
+log_success "Docker daemon is running"
 
 # Add current user to docker group (if not root)
 if [ "$(id -u)" -ne 0 ]; then

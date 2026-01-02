@@ -21,8 +21,26 @@ check_docker() {
     
     if ! run_sudo docker info &> /dev/null; then
         log_warn "Docker is installed but not running"
+        log_info "Starting Docker daemon..."
+        
+        # Start Docker service
+        if run_sudo systemctl start docker 2>/dev/null; then
+            log_success "Docker daemon started"
+            sleep 2  # Wait for Docker to be ready
+            
+            # Verify Docker is now running
+            if run_sudo docker info &> /dev/null; then
+                return 0
+            fi
+        fi
+        
+        log_error "Failed to start Docker daemon"
         return 2
     fi
+    
+    # Docker is already running
+    return 0
+}
     
     return 0
 }

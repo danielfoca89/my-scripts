@@ -104,6 +104,8 @@ preflight_check() {
     # Upgrade system packages (security updates)
     log_info "Upgrading system packages..."
     if is_debian_based; then
+        # Fix broken dependencies first, then upgrade
+        run_sudo apt --fix-broken install -y 2>&1 | grep -v "^Reading" || true
         run_sudo env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq 2>&1 | grep -v "^Reading" || true
     elif is_rhel_based; then
         run_sudo $PACKAGE_MANAGER upgrade -y -q 2>&1 || true
