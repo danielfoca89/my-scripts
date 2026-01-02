@@ -29,34 +29,96 @@ get_app_config() {
     ' "$APPS_CONF"
 }
 
-# Function to check if an app is installed (safe for non-root)
+# Function to check if an app is installed AND running
 is_app_installed() {
     local app_name="$1"
     
     case "$app_name" in
         docker-engine)
-            command -v docker &>/dev/null && return 0 || return 1
+            if command -v docker &>/dev/null; then
+                if systemctl is-active --quiet docker 2>/dev/null; then
+                     return 0
+                else
+                     # Docker is installed but not active - start it
+                     if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
+                         sudo systemctl start docker &>/dev/null || true
+                         sleep 2
+                         systemctl is-active --quiet docker 2>/dev/null && return 0
+                     fi
+                     return 1
+                fi
+            else
+                return 1
+            fi
             ;;
         nginx)
-            systemctl is-active --quiet nginx 2>/dev/null && return 0 || return 1
+            if command -v nginx &>/dev/null; then
+                systemctl is-active --quiet nginx 2>/dev/null && return 0
+                
+                # Try to start
+                if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
+                     sudo systemctl start nginx &>/dev/null || true
+                     sleep 1
+                     systemctl is-active --quiet nginx 2>/dev/null && return 0
+                fi
+                return 1
+            else
+                return 1
+            fi
             ;;
         postgres)
-            if command -v docker &>/dev/null; then
-                docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$" && return 0 || return 1
+            if command -v docker &>/dev/null && systemctl is-active --quiet docker 2>/dev/null; then
+                # Check if container exists first (stopped or running)
+                if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$"; then
+                    # Container exists, is it running?
+                    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$"; then
+                        return 0
+                    else
+                        # Container exists but stopped - try start
+                        docker start postgres &>/dev/null || true
+                        sleep 2
+                        docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^postgres$" && return 0
+                        return 1
+                    fi
+                else
+                    return 1
+                fi
             else
                 return 1
             fi
             ;;
         redis)
-            systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null && return 0 || return 1
+            if systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null; then
+                return 0
+            else
+                # Try start
+                if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
+                     sudo systemctl start redis-server &>/dev/null || true
+                     sleep 1
+                     systemctl is-active --quiet redis-server 2>/dev/null && return 0
+                fi
+                return 1
+            fi
             ;;
         certbot)
             command -v certbot &>/dev/null && return 0 || return 1
             ;;
         *)
-            # For other apps, check if Docker container exists
-            if command -v docker &>/dev/null; then
-                docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$" && return 0 || return 1
+            # For other apps, check if Docker container exists and is running
+            if command -v docker &>/dev/null && systemctl is-active --quiet docker 2>/dev/null; then
+                 if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$"; then
+                    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$"; then
+                        return 0
+                    else
+                        # specific app container stopped - try start
+                        docker start "$app_name" &>/dev/null || true
+                        sleep 2
+                        docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${app_name}$" && return 0
+                        return 1
+                    fi
+                 else
+                    return 1
+                 fi
             else
                 return 1
             fi

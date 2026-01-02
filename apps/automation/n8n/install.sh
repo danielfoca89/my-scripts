@@ -78,6 +78,15 @@ if command -v redis-server &>/dev/null || command -v redis-cli &>/dev/null; then
         # Ensure Redis is running
         ensure_service_running "$REDIS_SERVICE" "Redis"
         log_success "✓ Redis is available (queue and cache)"
+        
+        # Load Redis credentials for n8n connection
+        if has_credentials "redis"; then
+            REDIS_PASSWORD=$(get_secret "redis" "REDIS_PASSWORD")
+            log_success "✓ Redis credentials loaded"
+        else
+            log_warn "Redis credentials not found, using empty password"
+            REDIS_PASSWORD=""
+        fi
     else
         log_error "Redis service not found"
         exit 1
@@ -282,10 +291,11 @@ services:
       - WEBHOOK_URL=https://$N8N_DOMAIN/
       - GENERIC_TIMEZONE=\${TZ:-Europe/Bucharest}
       
-      # Redis for Queue and Cache
-      - QUEUE_BULL_REDIS_HOST=redis
+      # Redis for Queue and Cache (connects to host Redis via Docker host)
+      - QUEUE_BULL_REDIS_HOST=172.17.0.1
       - QUEUE_BULL_REDIS_PORT=6379
       - QUEUE_BULL_REDIS_DB=0
+      - QUEUE_BULL_REDIS_PASSWORD=$REDIS_PASSWORD
       
       # Execution
       - EXECUTIONS_PROCESS=main

@@ -204,7 +204,8 @@ display_connection_info() {
             local value_length=${#clean_value}
             
             if [ "$value_length" -gt 8 ]; then
-                local masked="${clean_value:0:4}${'*' * ($value_length - 8)}${clean_value: -4}"
+                local mask_len=$((value_length - 8))
+                local masked="${clean_value:0:4}$(printf '%*s' "$mask_len" '' | tr ' ' '*')${clean_value: -4}"
             else
                 local masked="****"
             fi

@@ -31,8 +31,7 @@ preflight_check "$APP_NAME" 15 2 "5432"
 # Check dependency
 log_step "Step 1: Checking dependencies"
 if ! check_docker; then
-    log_error "Docker is not installed"
-    log_info "Please install Docker first: Infrastructure > Docker Engine"
+    log_error "Docker dependency check failed"
     exit 1
 fi
 

@@ -14,35 +14,50 @@ if [ -f "${DOCKER_LIB_DIR}/utils.sh" ]; then
 fi
 
 # Check if Docker is installed and running
+# Check if Docker is installed and running
 check_docker() {
+    # 1. Check if binary exists
     if ! command -v docker &> /dev/null; then
         return 1
     fi
     
-    if ! run_sudo docker info &> /dev/null; then
-        log_warn "Docker is installed but not running"
-        log_info "Starting Docker daemon..."
-        
-        # Start Docker service
-        if run_sudo systemctl start docker 2>/dev/null; then
-            log_success "Docker daemon started"
-            sleep 2  # Wait for Docker to be ready
-            
-            # Verify Docker is now running
-            if run_sudo docker info &> /dev/null; then
-                return 0
-            fi
-        fi
-        
-        log_error "Failed to start Docker daemon"
-        return 2
+    # 2. Check if daemon is running (fast check)
+    if run_sudo docker info &> /dev/null; then
+        return 0
+    fi
+
+    # 3. Daemon not responsive - try to start
+    log_warn "Docker is installed but not running"
+    log_info "Attempting to start Docker daemon..."
+    
+    local start_output
+    if command -v systemctl &>/dev/null; then
+        start_output=$(run_sudo systemctl start docker 2>&1) || true
+        run_sudo systemctl enable docker &>/dev/null || true
+    else
+        # Fallback for non-systemd init systems (unlikely on modern linux but safe)
+        start_output=$(run_sudo service docker start 2>&1) || true
     fi
     
-    # Docker is already running
-    return 0
-}
+    # 4. Wait and verify
+    echo -n "Waiting for Docker..."
+    for i in {1..10}; do
+        if run_sudo docker info &> /dev/null; then
+            echo ""
+            log_success "Docker daemon started successfully"
+            return 0
+        fi
+        echo -n "."
+        sleep 1
+    done
+    echo ""
+
+    # 5. Final failure reporting
+    log_error "Docker started but not responding after 10s"
+    log_info "Service status:"
+    run_sudo systemctl status docker --no-pager -n 5 || true
     
-    return 0
+    return 2
 }
 
 # Check if Docker Compose is available

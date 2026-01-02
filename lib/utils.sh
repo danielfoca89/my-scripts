@@ -143,7 +143,7 @@ run_sudo() {
     fi
 
     # If SUDO_PASS is provided (automation)
-    if [ -n "$SUDO_PASS" ]; then
+    if [ -n "${SUDO_PASS:-}" ]; then
         echo "$SUDO_PASS" | sudo -S -p "" "$@" 2>/dev/null
         return $?
     fi

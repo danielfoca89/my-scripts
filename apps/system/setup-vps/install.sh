@@ -17,6 +17,14 @@ if [ -f "$SCRIPT_DIR/workflows/vps-initial-setup.sh" ]; then
     log_info "Running VPS initial setup workflow..."
     bash "$SCRIPT_DIR/workflows/vps-initial-setup.sh"
 else
-    log_error "Workflow script not found"
-    exit 1
+    log_warn "VPS initial setup workflow not yet available"
+    log_info ""
+    log_info "For now, install components individually:"
+    log_info "  1. Docker Engine (required for most apps)"
+    log_info "  2. Nginx (for reverse proxy)"
+    log_info "  3. Certbot (for SSL certificates)"
+    log_info "  4. Fail2ban (for security)"
+    log_info ""
+    log_info "Use the orchestrator menu to install these components."
+    exit 0
 fi

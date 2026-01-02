@@ -30,13 +30,34 @@ log_info "Package manager: $PACKAGE_MANAGER"
 echo ""
 
 # Check if already installed
+# Check if already installed
 if systemctl is-active --quiet nginx 2>/dev/null; then
     log_warn "Nginx is already running"
-    if confirm_action "Reinstall/Reconfigure?"; then
+    if confirm_action "Reinstall/Reconfigure? (This will overwrite configs!)"; then
         log_info "Proceeding with reconfiguration..."
     else
         log_info "Installation cancelled"
         exit 0
+    fi
+elif command -v nginx &>/dev/null; then
+    log_warn "Nginx is installed but NOT running"
+    
+    if confirm_action "Start Nginx service instead of reinstalling?"; then
+        log_info "Starting Nginx..."
+        run_sudo systemctl start nginx
+        if systemctl is-active --quiet nginx; then
+            log_success "Nginx started successfully"
+            exit 0
+        else
+            log_error "Failed to start Nginx. Check logs."
+            if confirm_action "Proceed with full reinstall (destroys existing config)?"; then
+                log_info "Proceeding with reinstall..."
+            else
+                exit 1
+            fi
+        fi
+    else
+        log_info "Proceeding with full reinstall..."
     fi
 fi
 echo ""
@@ -268,7 +289,15 @@ run_sudo tee "$HTML_DIR/index.html" > /dev/null <<'EOF'
 </html>
 EOF
 
-run_sudo chown -R www-data:www-data "$HTML_DIR"
+# Set ownership based on OS
+if is_debian_based; then
+    run_sudo chown -R www-data:www-data "$HTML_DIR"
+elif is_rhel_based; then
+    run_sudo chown -R nginx:nginx "$HTML_DIR"
+else
+    # Fallback: try www-data first, then nginx
+    run_sudo chown -R www-data:www-data "$HTML_DIR" 2>/dev/null || run_sudo chown -R nginx:nginx "$HTML_DIR" 2>/dev/null || true
+fi
 log_success "Default site configured"
 echo ""
 

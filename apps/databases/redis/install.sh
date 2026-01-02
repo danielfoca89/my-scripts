@@ -30,13 +30,42 @@ log_info "Package manager: $PACKAGE_MANAGER"
 echo ""
 
 # Check if already installed
+# Check if already installed
 if systemctl is-active --quiet redis-server 2>/dev/null || systemctl is-active --quiet redis 2>/dev/null; then
     log_warn "Redis is already running"
-    if confirm_action "Reinstall/Reconfigure?"; then
+    if confirm_action "Reinstall/Reconfigure? (This will overwrite configs!)"; then
         log_info "Proceeding with reconfiguration..."
     else
         log_info "Installation cancelled"
         exit 0
+    fi
+elif command -v redis-server &>/dev/null; then
+    log_warn "Redis is installed but NOT running"
+    
+    if confirm_action "Start Redis service instead of reinstalling?"; then
+        log_info "Starting Redis..."
+        
+        # Determine service name
+        if systemctl list-unit-files | grep -q "^redis-server.service"; then
+            SERVICE="redis-server"
+        else
+            SERVICE="redis"
+        fi
+        
+        run_sudo systemctl start "$SERVICE"
+        if systemctl is-active --quiet "$SERVICE"; then
+            log_success "Redis started successfully"
+            exit 0
+        else
+            log_error "Failed to start Redis. Check logs."
+            if confirm_action "Proceed with full reinstall (destroys existing config)?"; then
+                log_info "Proceeding with reinstall..."
+            else
+                exit 1
+            fi
+        fi
+    else
+         log_info "Proceeding with full reinstall..."
     fi
 fi
 echo ""
@@ -66,8 +95,8 @@ if has_credentials "$APP_NAME"; then
     REDIS_PASSWORD=$(get_secret "$APP_NAME" "REDIS_PASSWORD")
 else
     log_info "Generating secure password..."
-    REDIS_PASSWORD=$(generate_secret "REDIS_PASSWORD")
-    save_credentials "$APP_NAME" "REDIS_PASSWORD=$REDIS_PASSWORD"
+    REDIS_PASSWORD=$(generate_secure_password 32 "alphanumeric")
+    save_secret "$APP_NAME" "REDIS_PASSWORD" "$REDIS_PASSWORD"
     log_success "Password saved to credentials store"
 fi
 echo ""

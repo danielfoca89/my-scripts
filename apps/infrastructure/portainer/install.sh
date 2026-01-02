@@ -22,8 +22,7 @@ echo ""
 
 log_step "Step 1: Checking dependencies"
 if ! check_docker; then
-    log_error "Docker is not installed"
-    log_info "Please install Docker first: Infrastructure > Docker Engine"
+    # Error logged by check_docker
     exit 1
 fi
 log_success "✓ Docker is available"

@@ -48,9 +48,22 @@ check_dependencies() {
     fi
     
     if ! command -v htpasswd &> /dev/null; then
-        log_info "Installing apache2-utils for htpasswd..."
-        apt-get update -qq
-        apt-get install -y apache2-utils
+        log_info "Installing htpasswd tools..."
+        # Source OS detection for pkg_install
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        if [ -f "${SCRIPT_DIR}/lib/os-detect.sh" ]; then
+            source "${SCRIPT_DIR}/lib/os-detect.sh"
+            if is_debian_based; then
+                pkg_install apache2-utils
+            elif is_rhel_based; then
+                pkg_install httpd-tools
+            else
+                apt-get update -qq && apt-get install -y apache2-utils
+            fi
+        else
+            # Fallback if os-detect.sh not found
+            apt-get update -qq && apt-get install -y apache2-utils
+        fi
     fi
     
     log_info "Dependencies OK"
@@ -155,7 +168,11 @@ generate_dashboard() {
     
     # Find health-check.sh script
     local health_check_script=""
-    if [ -f "/opt/vps-scripts/tools/health-check.sh" ]; then
+    # First try relative path from script location
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "${script_dir}/health-check.sh" ]; then
+        health_check_script="${script_dir}/health-check.sh"
+    elif [ -f "/opt/vps-scripts/tools/health-check.sh" ]; then
         health_check_script="/opt/vps-scripts/tools/health-check.sh"
     elif [ -f "${HOME}/vps-scripts/tools/health-check.sh" ]; then
         health_check_script="${HOME}/vps-scripts/tools/health-check.sh"

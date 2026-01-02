@@ -55,13 +55,30 @@ check_port_available() {
     
     if command -v ss &> /dev/null; then
         if ss -tuln | grep -q ":${port} "; then
-            return 1
+             return 1
         fi
     elif command -v netstat &> /dev/null; then
         if netstat -tuln | grep -q ":${port} "; then
             return 1
         fi
+    elif command -v lsof &> /dev/null; then
+         if lsof -i :$port >/dev/null; then
+             return 1
+         fi
     else
+        # Try to install net-tools if missing and we are root/can sudo
+        log_debug "Port check tools missing. Attempting to install net-tools..."
+        install_package "net-tools" >/dev/null 2>&1 || true
+        
+        if command -v netstat &> /dev/null; then
+             if netstat -tuln | grep -q ":${port} "; then
+                return 1
+             fi
+        else
+             log_warn "Cannot reliably check if port $port is in use (missing ss/netstat/lsof)"
+             return 0
+        fi
+    fi
         # Cannot check, assume available
         return 0
     fi

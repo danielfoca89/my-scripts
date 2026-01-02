@@ -82,8 +82,13 @@ create_app_directory "$DATA_DIR/configdb"
 log_success "Data directories created: $DATA_DIR"
 echo ""
 
+# Create Docker network (if not exists)
+log_step "Step 4: Setting up Docker network"
+create_docker_network "vps_network"
+echo ""
+
 # Deploy container
-log_step "Step 4: Deploying MongoDB container"
+log_step "Step 5: Deploying MongoDB container"
 log_info "Starting MongoDB 7..."
 
 run_sudo docker run -d \
