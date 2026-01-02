@@ -81,18 +81,18 @@ log_debug() {
 }
 
 # --- USER CONFIRMATION ---
-# Automatic confirmation for non-interactive scripts
+# Prompt user for confirmation
 # Set FORCE_YES=1 environment variable to skip all confirmations
 confirm_action() {
     local prompt=${1:-"Continue?"}
     
     # Check if we're in automation mode
-    if [ "${FORCE_YES:-1}" = "1" ] || [ "${CI:-}" = "true" ] || [ "${DEBIAN_FRONTEND:-}" = "noninteractive" ]; then
+    if [ "${FORCE_YES:-0}" = "1" ] || [ "${CI:-}" = "true" ]; then
         log_info "$prompt [AUTO-YES]"
         return 0
     fi
     
-    # Interactive mode (only if explicitly requested)
+    # Interactive mode (default)
     echo -ne "${YELLOW}$prompt (y/N):${NC} "
     read -r response
     if [[ "$response" =~ ^[Yy]$ ]]; then
@@ -100,6 +100,36 @@ confirm_action() {
     else
         return 1
     fi
+}
+
+# --- SERVICE MANAGEMENT ---
+# Ensure service is running, start if needed
+# Args: $1 = service_name, $2 = friendly_name (optional)
+ensure_service_running() {
+    local service_name=$1
+    local friendly_name=${2:-$service_name}
+    
+    if run_sudo systemctl is-active --quiet "$service_name" 2>/dev/null; then
+        log_debug "$friendly_name is already running"
+        return 0
+    fi
+    
+    log_info "$friendly_name is not running, starting it..."
+    if run_sudo systemctl start "$service_name" 2>/dev/null; then
+        run_sudo systemctl enable "$service_name" 2>/dev/null || true
+        log_success "$friendly_name started"
+        sleep 2  # Wait for service to be ready
+        return 0
+    else
+        log_error "Failed to start $friendly_name"
+        return 1
+    fi
+}
+
+# Check if service exists
+service_exists() {
+    local service_name=$1
+    systemctl list-unit-files "$service_name.service" &>/dev/null
 }
 
 # --- SUDO WRAPPER ---

@@ -31,9 +31,11 @@ echo ""
 # Check dependencies
 log_step "Step 2: Checking dependencies"
 
-# Check if Nginx is installed and running
+# Check if Nginx is installed
 NGINX_RUNNING=false
-if systemctl is-active --quiet nginx 2>/dev/null; then
+if command -v nginx &>/dev/null; then
+    # Ensure Nginx is running
+    ensure_service_running nginx "Nginx"
     NGINX_RUNNING=true
     log_success "✓ Nginx detected and running"
 else

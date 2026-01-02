@@ -54,19 +54,34 @@ else
 fi
 
 # Nginx check (REQUIRED for SSL)
-if ! run_sudo systemctl is-active --quiet nginx 2>/dev/null; then
+if ! command -v nginx &>/dev/null; then
     log_error "Nginx is not installed"
-    log_info "Nginx is REQUIRED for SSL certificate and reverse proxy"
     log_info "Please install Nginx first: Infrastructure > Nginx"
     exit 1
 fi
+
+# Ensure Nginx is running
+ensure_service_running nginx "Nginx"
 log_success "✓ Nginx is available"
 
 # Redis check (REQUIRED for queue and cache)
-REDIS_AVAILABLE=false
-if run_sudo systemctl is-active --quiet redis-server 2>/dev/null || run_sudo systemctl is-active --quiet redis 2>/dev/null; then
-    REDIS_AVAILABLE=true
-    log_success "✓ Redis detected (queue and cache)"
+REDIS_SERVICE=""
+if command -v redis-server &>/dev/null || command -v redis-cli &>/dev/null; then
+    # Detect Redis service name
+    if systemctl list-unit-files | grep -q "redis-server.service"; then
+        REDIS_SERVICE="redis-server"
+    elif systemctl list-unit-files | grep -q "redis.service"; then
+        REDIS_SERVICE="redis"
+    fi
+    
+    if [ -n "$REDIS_SERVICE" ]; then
+        # Ensure Redis is running
+        ensure_service_running "$REDIS_SERVICE" "Redis"
+        log_success "✓ Redis is available (queue and cache)"
+    else
+        log_error "Redis service not found"
+        exit 1
+    fi
 else
     log_error "Redis is not installed"
     log_info "Redis is REQUIRED for n8n queue management and caching"
@@ -101,67 +116,53 @@ echo ""
 # Domain and email configuration
 log_step "Step 2: Domain and SSL configuration"
 echo ""
-
-# Get domain from environment or prompt
-if [ -n "${N8N_DOMAIN:-}" ]; then
-    log_info "Using domain from environment: $N8N_DOMAIN"
-else
-    log_info "n8n requires a domain name for SSL certificate"
-    log_info "Example: work.example.com"
-    log_info "Set N8N_DOMAIN environment variable to automate this"
-    echo ""
-    
-    while true; do
-        read -p "Enter your domain name: " N8N_DOMAIN
-        N8N_DOMAIN=$(echo "$N8N_DOMAIN" | xargs) # trim whitespace
-        
-        if [ -z "$N8N_DOMAIN" ]; then
-            log_error "Domain cannot be empty"
-            continue
-        fi
-        
-        # Basic domain validation
-        if [[ ! "$N8N_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-            log_error "Invalid domain format"
-            continue
-        fi
-        
-        break
-    done
-fi
-
-log_success "Domain: $N8N_DOMAIN"
+log_info "n8n requires a domain name for SSL certificate"
+log_info "Example: work.venditax.com"
 echo ""
 
-# Get email from environment or prompt
-if [ -n "${N8N_EMAIL:-}" ]; then
-    log_info "Using email from environment: $N8N_EMAIL"
-else
-    log_info "SSL certificate requires an email address for notifications"
-    log_info "Example: admin@example.com"
-    log_info "Set N8N_EMAIL environment variable to automate this"
-    echo ""
+# Domain prompt
+while true; do
+    read -p "Enter your domain name: " N8N_DOMAIN
+    N8N_DOMAIN=$(echo "$N8N_DOMAIN" | xargs) # trim whitespace
     
-    while true; do
-        read -p "Enter your email address: " N8N_EMAIL
-        N8N_EMAIL=$(echo "$N8N_EMAIL" | xargs) # trim whitespace
-        
-        if [ -z "$N8N_EMAIL" ]; then
-            log_error "Email cannot be empty"
-            continue
-        fi
-        
-        # Basic email validation
-        if [[ ! "$N8N_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-            log_error "Invalid email format"
-            continue
-        fi
-        
-        break
-    done
-fi
+    if [ -z "$N8N_DOMAIN" ]; then
+        log_error "Domain cannot be empty"
+        continue
+    fi
+    
+    # Basic domain validation
+    if [[ ! "$N8N_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+        log_error "Invalid domain format"
+        continue
+    fi
+    
+    log_success "Domain: $N8N_DOMAIN"
+    break
+done
+echo ""
 
-log_success "Email: $N8N_EMAIL"
+# Email prompt
+log_info "SSL certificate requires an email address for notifications"
+log_info "Example: admin@venditax.com"
+echo ""
+
+while true; do
+    read -p "Enter your email address: " N8N_EMAIL
+    N8N_EMAIL=$(echo "$N8N_EMAIL" | xargs) # trim whitespace
+    
+    if [ -z "$N8N_EMAIL" ]; then
+        log_error "Email cannot be empty"
+        continue
+    fi
+    
+    # Basic email validation
+    if [[ ! "$N8N_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        log_error "Invalid email format"
+        continue
+    fi
+    
+    log_success "Email: $N8N_EMAIL"
+    break
 done
 
 # Save domain and email
