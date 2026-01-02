@@ -294,5 +294,4 @@ echo "  # Check last cleanup:"
 echo "  tail -20 /opt/system/maintenance/logs/cleanup_*.log | tail -20"
 echo ""
 
-read -p "Press Enter to continue..."
 

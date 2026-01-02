@@ -191,4 +191,3 @@ display_connection_info "$APP_NAME"
 EXAMPLE
 
 echo ""
-read -p "Press Enter to continue..."

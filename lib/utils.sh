@@ -80,6 +80,28 @@ log_debug() {
     fi
 }
 
+# --- USER CONFIRMATION ---
+# Automatic confirmation for non-interactive scripts
+# Set FORCE_YES=1 environment variable to skip all confirmations
+confirm_action() {
+    local prompt=${1:-"Continue?"}
+    
+    # Check if we're in automation mode
+    if [ "${FORCE_YES:-1}" = "1" ] || [ "${CI:-}" = "true" ] || [ "${DEBIAN_FRONTEND:-}" = "noninteractive" ]; then
+        log_info "$prompt [AUTO-YES]"
+        return 0
+    fi
+    
+    # Interactive mode (only if explicitly requested)
+    echo -ne "${YELLOW}$prompt (y/N):${NC} "
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # --- SUDO WRAPPER ---
 # Executes commands with root privileges
 # Priority: 1) User is root, 2) SUDO_PASS env var, 3) Interactive/passwordless sudo

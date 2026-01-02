@@ -221,5 +221,4 @@ echo "  • Configuration: https://learn.netdata.cloud/docs/configure/nodes"
 echo "  • Health alerts: https://learn.netdata.cloud/docs/monitor/configure-alarms"
 echo ""
 
-read -p "Press Enter to continue..."
 

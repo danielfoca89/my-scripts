@@ -192,4 +192,3 @@ echo "  • 179  - Docker Prometheus Monitoring"
 echo "  • 11074 - Node Exporter for Prometheus"
 echo ""
 
-read -p "Press Enter to continue..."

@@ -279,4 +279,3 @@ echo "  # Scheduled backup with cron:"
 echo "  0 2 * * * redis-cli -a PASSWORD save && cp $DATA_DIR/dump.rdb /backup/redis-\$(date +\\%Y\\%m\\%d).rdb"
 echo ""
 
-read -p "Press Enter to continue..."

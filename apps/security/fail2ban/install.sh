@@ -247,5 +247,4 @@ echo "  destemail = admin@yourdomain.com"
 echo "  action = %(action_mwl)s"
 echo ""
 
-read -p "Press Enter to continue..."
 

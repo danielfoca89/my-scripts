@@ -290,5 +290,4 @@ fi
 echo "  To activate: source ~/.bashrc"
 echo ""
 
-read -p "Press Enter to continue..."
 

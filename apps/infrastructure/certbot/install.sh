@@ -293,4 +293,3 @@ echo "  • Domain not pointing here: check DNS A record"
 echo "  • Nginx config error: sudo nginx -t"
 echo ""
 
-read -p "Press Enter to continue..."

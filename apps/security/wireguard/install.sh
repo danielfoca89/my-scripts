@@ -64,17 +64,28 @@ echo ""
 # Get server configuration
 log_step "Step 3: Configuring server parameters"
 
+# Detect server IP
 SERVER_IP=$(hostname -I | awk '{print $1}')
 log_info "Server IP detected: $SERVER_IP"
 
-read -p "Enter server public IP/domain [$SERVER_IP]: " USER_SERVER_URL
-SERVER_URL="${USER_SERVER_URL:-$SERVER_IP}"
+# Use environment variables or defaults
+SERVER_URL="${WG_SERVER_URL:-${SERVER_IP}}"
+WG_PORT="${WG_PORT:-51820}"
+PEERS="${WG_PEERS:-3}"
 
-read -p "WireGuard port [51820]: " USER_PORT
-WG_PORT="${USER_PORT:-51820}"
-
-read -p "Number of peers to create [3]: " USER_PEERS
-PEERS="${USER_PEERS:-3}"
+# Only prompt if not automated
+if [ "${FORCE_YES:-1}" != "1" ] && [ -z "${WG_SERVER_URL}" ]; then
+    log_info "Set WG_SERVER_URL, WG_PORT, WG_PEERS environment variables to automate"
+    echo ""
+    read -p "Enter server public IP/domain [$SERVER_IP]: " USER_SERVER_URL
+    SERVER_URL="${USER_SERVER_URL:-$SERVER_IP}"
+    
+    read -p "WireGuard port [51820]: " USER_PORT
+    WG_PORT="${USER_PORT:-51820}"
+    
+    read -p "Number of peers to create [3]: " USER_PEERS
+    PEERS="${USER_PEERS:-3}"
+fi
 
 log_success "Configuration:"
 echo "  Server URL:  $SERVER_URL"
@@ -347,5 +358,4 @@ echo "  5. Scan QR code or import configuration"
 echo "  6. Connect and test: ping $WG_SERVER_IP"
 echo ""
 
-read -p "Press Enter to continue..."
 

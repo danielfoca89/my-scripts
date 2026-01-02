@@ -252,4 +252,3 @@ echo "  # Disk usage"
 echo "  node_filesystem_avail_bytes / node_filesystem_size_bytes * 100"
 echo ""
 
-read -p "Press Enter to continue..."

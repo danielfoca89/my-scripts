@@ -259,5 +259,4 @@ echo "  • CIS Docker Benchmark: https://www.cisecurity.org/"
 echo "  • OWASP: https://owasp.org/"
 echo ""
 
-read -p "Press Enter to continue..."
 

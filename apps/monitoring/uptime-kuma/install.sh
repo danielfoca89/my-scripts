@@ -213,5 +213,4 @@ echo "  • Wiki: https://github.com/louislam/uptime-kuma/wiki"
 echo "  • API: https://github.com/louislam/uptime-kuma/wiki/API"
 echo ""
 
-read -p "Press Enter to continue..."
 

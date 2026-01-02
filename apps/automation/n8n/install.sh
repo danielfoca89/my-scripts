@@ -101,53 +101,67 @@ echo ""
 # Domain and email configuration
 log_step "Step 2: Domain and SSL configuration"
 echo ""
-log_info "n8n requires a domain name for SSL certificate"
-log_info "Example: work.venditax.com"
+
+# Get domain from environment or prompt
+if [ -n "${N8N_DOMAIN:-}" ]; then
+    log_info "Using domain from environment: $N8N_DOMAIN"
+else
+    log_info "n8n requires a domain name for SSL certificate"
+    log_info "Example: work.example.com"
+    log_info "Set N8N_DOMAIN environment variable to automate this"
+    echo ""
+    
+    while true; do
+        read -p "Enter your domain name: " N8N_DOMAIN
+        N8N_DOMAIN=$(echo "$N8N_DOMAIN" | xargs) # trim whitespace
+        
+        if [ -z "$N8N_DOMAIN" ]; then
+            log_error "Domain cannot be empty"
+            continue
+        fi
+        
+        # Basic domain validation
+        if [[ ! "$N8N_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
+            log_error "Invalid domain format"
+            continue
+        fi
+        
+        break
+    done
+fi
+
+log_success "Domain: $N8N_DOMAIN"
 echo ""
 
-# Domain prompt
-while true; do
-    read -p "Enter your domain name: " N8N_DOMAIN
-    N8N_DOMAIN=$(echo "$N8N_DOMAIN" | xargs) # trim whitespace
+# Get email from environment or prompt
+if [ -n "${N8N_EMAIL:-}" ]; then
+    log_info "Using email from environment: $N8N_EMAIL"
+else
+    log_info "SSL certificate requires an email address for notifications"
+    log_info "Example: admin@example.com"
+    log_info "Set N8N_EMAIL environment variable to automate this"
+    echo ""
     
-    if [ -z "$N8N_DOMAIN" ]; then
-        log_error "Domain cannot be empty"
-        continue
-    fi
-    
-    # Basic domain validation
-    if [[ ! "$N8N_DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-        log_error "Invalid domain format"
-        continue
-    fi
-    
-    log_success "Domain: $N8N_DOMAIN"
-    break
-done
-echo ""
+    while true; do
+        read -p "Enter your email address: " N8N_EMAIL
+        N8N_EMAIL=$(echo "$N8N_EMAIL" | xargs) # trim whitespace
+        
+        if [ -z "$N8N_EMAIL" ]; then
+            log_error "Email cannot be empty"
+            continue
+        fi
+        
+        # Basic email validation
+        if [[ ! "$N8N_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            log_error "Invalid email format"
+            continue
+        fi
+        
+        break
+    done
+fi
 
-# Email prompt
-log_info "SSL certificate requires an email address for notifications"
-log_info "Example: admin@venditax.com"
-echo ""
-
-while true; do
-    read -p "Enter your email address: " N8N_EMAIL
-    N8N_EMAIL=$(echo "$N8N_EMAIL" | xargs) # trim whitespace
-    
-    if [ -z "$N8N_EMAIL" ]; then
-        log_error "Email cannot be empty"
-        continue
-    fi
-    
-    # Basic email validation
-    if [[ ! "$N8N_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-        log_error "Invalid email format"
-        continue
-    fi
-    
-    log_success "Email: $N8N_EMAIL"
-    break
+log_success "Email: $N8N_EMAIL"
 done
 
 # Save domain and email
@@ -424,7 +438,6 @@ echo ""
 
 # Wait for user to verify DNS
 log_info "Press Enter when DNS is configured, or Ctrl+C to cancel"
-read -p "" DUMMY
 
 # Request certificate
 if run_sudo certbot --nginx -d "$N8N_DOMAIN" \
@@ -525,5 +538,4 @@ echo "  • Workflow templates: https://n8n.io/workflows"
 echo "  • Community: https://community.n8n.io"
 echo ""
 
-read -p "Press Enter to continue..."
 

@@ -178,5 +178,4 @@ echo "  Start:        docker start $CONTAINER_NAME"
 echo "  Remove:       docker rm -f $CONTAINER_NAME"
 echo ""
 
-read -p "Press Enter to continue..."
 
