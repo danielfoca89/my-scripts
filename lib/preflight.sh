@@ -84,6 +84,24 @@ preflight_check() {
     log_step "Pre-flight checks for $app_name"
     echo ""
     
+    # Update system packages
+    log_info "Updating system packages..."
+    if pkg_update; then
+        log_success "Package cache updated"
+    else
+        log_warn "Failed to update package cache, continuing anyway..."
+    fi
+    
+    # Upgrade system packages (security updates)
+    log_info "Upgrading system packages..."
+    if is_debian_based; then
+        run_sudo env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq 2>&1 | grep -v "^Reading" || true
+    elif is_rhel_based; then
+        run_sudo $PACKAGE_MANAGER upgrade -y -q 2>&1 || true
+    fi
+    log_success "System packages upgraded"
+    echo ""
+    
     # Check disk space
     local disk_available=$(get_disk_space_human)
     echo "  Disk space: $disk_available available (required: ${min_disk_gb}GB)"

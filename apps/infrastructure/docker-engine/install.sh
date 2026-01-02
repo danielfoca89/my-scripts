@@ -49,7 +49,6 @@ fi
 
 log_step "Step 2: Installing prerequisites"
 if is_debian_based; then
-    pkg_update
     pkg_install apt-transport-https ca-certificates curl gnupg lsb-release
     
     # Add Docker's official GPG key
@@ -63,6 +62,7 @@ if is_debian_based; then
         "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${OS_ID} \
         $(lsb_release -cs) stable" | run_sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     
+    # Update package cache
     pkg_update
     
 elif is_rhel_based; then
@@ -71,6 +71,7 @@ elif is_rhel_based; then
 fi
 
 log_step "Step 3: Installing Docker Engine"
+# pkg_install now has built-in retry logic and --fix-missing
 pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 log_step "Step 4: Starting Docker service"

@@ -114,7 +114,12 @@ pkg_install() {
     
     case "$PACKAGE_MANAGER" in
         apt)
-            run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages
+            # Try installation with --fix-missing and retry logic
+            if ! run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing $packages 2>&1; then
+                log_warn "First installation attempt failed, updating cache and retrying..."
+                run_sudo apt-get update --fix-missing 2>&1 || true
+                run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y $packages 2>&1
+            fi
             ;;
         dnf|yum)
             run_sudo $PACKAGE_MANAGER install -y -q $packages
