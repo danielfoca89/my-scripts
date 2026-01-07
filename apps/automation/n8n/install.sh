@@ -302,9 +302,16 @@ log_step "Step 6: Creating n8n network"
 log_info "Creating n8n_network for n8n stack isolation..."
 N8N_NETWORK_CREATED=false
 if ! run_sudo docker network inspect n8n_network &>/dev/null 2>&1; then
-    run_sudo docker network create n8n_network --subnet=172.19.0.0/16 --gateway=172.19.0.1 2>/dev/null
-    log_success "n8n_network created (172.19.0.0/16)"
-    N8N_NETWORK_CREATED=true
+    log_info "Attempting to create network with subnet 172.19.0.0/16..."
+    if run_sudo docker network create n8n_network --subnet=172.19.0.0/16 --gateway=172.19.0.1; then
+        log_success "n8n_network created (172.19.0.0/16)"
+        N8N_NETWORK_CREATED=true
+    else
+        log_error "Failed to create n8n_network!"
+        log_info "Checking existing networks:"
+        run_sudo docker network ls
+        exit 1
+    fi
 else
     log_info "n8n_network already exists"
 fi
@@ -316,12 +323,6 @@ if ! run_sudo docker network inspect vps_network &>/dev/null 2>&1; then
     exit 1
 fi
 log_success "vps_network found"
-
-# Set Redis host (container name for Docker DNS resolution)
-REDIS_HOST="redis"
-log_info "Redis connection: redis://redis:6379 (via docker network)"
-log_success "✓ Redis host configured"
-
 echo ""
 
 # Final validation of ALL critical n8n environment variables
@@ -331,7 +332,6 @@ MISSING_VARS=()
 [ -z "$N8N_DB_NAME" ] && MISSING_VARS+=("N8N_DB_NAME")
 [ -z "$N8N_DB_USER" ] && MISSING_VARS+=("N8N_DB_USER")
 [ -z "$N8N_DB_PASSWORD" ] && MISSING_VARS+=("N8N_DB_PASSWORD")
-[ -z "$REDIS_HOST" ] && MISSING_VARS+=("REDIS_HOST")
 
 if [ ${#MISSING_VARS[@]} -gt 0 ]; then
     log_error "Critical n8n environment variables are empty:"
@@ -380,8 +380,8 @@ services:
 # Add Redis configuration only for queue mode
 if [ "$EXECUTION_MODE" = "queue" ]; then
     DOCKER_COMPOSE_CONTENT+="      
-      # Redis for Queue and Cache (connects to host Redis via vps_network gateway)
-      - QUEUE_BULL_REDIS_HOST=$REDIS_HOST
+      # Redis for Queue and Cache (connects to redis-docker container)
+      - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
       - QUEUE_BULL_REDIS_DB=0
       - QUEUE_BULL_REDIS_PASSWORD=$REDIS_PASSWORD
