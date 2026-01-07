@@ -301,18 +301,28 @@ echo ""
 log_step "Step 6: Creating n8n network"
 log_info "Creating n8n_network for n8n stack isolation..."
 N8N_NETWORK_CREATED=false
-if ! run_sudo docker network inspect n8n_network &>/dev/null 2>&1; then
-    if run_sudo docker network create n8n_network --subnet=172.19.0.0/16 --gateway=172.19.0.1; then
-        log_success "n8n_network created (172.19.0.0/16)"
+
+# Check if network exists
+if run_sudo docker network inspect n8n_network &>/dev/null; then
+    log_info "n8n_network already exists"
+else
+    log_info "Creating network with subnet 172.19.0.0/16..."
+    
+    # Create network with explicit error handling
+    CREATE_OUTPUT=$(run_sudo docker network create n8n_network --subnet=172.19.0.0/16 --gateway=172.19.0.1 2>&1)
+    CREATE_EXIT_CODE=$?
+    
+    if [ $CREATE_EXIT_CODE -eq 0 ]; then
+        log_success "n8n_network created successfully (172.19.0.0/16)"
         N8N_NETWORK_CREATED=true
     else
-        log_error "Failed to create n8n_network"
-        log_info "Checking for subnet conflicts..."
-        run_sudo docker network inspect $(run_sudo docker network ls -q) 2>/dev/null | grep -E '"Subnet"|"Gateway"' | head -10
+        log_error "Failed to create n8n_network (exit code: $CREATE_EXIT_CODE)"
+        log_error "Output: $CREATE_OUTPUT"
+        log_info ""
+        log_info "Checking existing networks and subnets:"
+        run_sudo docker network ls
         exit 1
     fi
-else
-    log_info "n8n_network already exists"
 fi
 
 # Verify vps_network exists (for postgres access)
