@@ -216,7 +216,7 @@ log_info "User account will be created on first web access"
 echo ""
 
 # Set execution mode (regular mode - works reliably without Redis connection issues)
-EXECUTION_MODE="regular"
+EXECUTION_MODE="queue"
 log_info "Using regular execution mode (workflows run in main process)"
 echo ""
 
