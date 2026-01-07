@@ -231,6 +231,77 @@ install_dependencies() {
     return 0
 }
 
+# Function to handle optional dependencies (recommended but not required)
+install_optional_dependencies() {
+    local app_name="$1"
+    local optional_deps=$(get_app_config "$app_name" "optional_dependencies")
+    
+    # If no optional dependencies, return
+    [ -z "$optional_deps" ] && return 0
+    
+    # Split dependencies by comma
+    IFS=',' read -ra OPT_DEPS <<< "$optional_deps"
+    
+    for opt_dep in "${OPT_DEPS[@]}"; do
+        opt_dep=$(echo "$opt_dep" | xargs) # trim whitespace
+        
+        if ! is_app_installed "$opt_dep"; then
+            log_info "═══════════════════════════════════════════"
+            log_info "  Optional Enhancement Available"
+            log_info "═══════════════════════════════════════════"
+            echo ""
+            
+            # Get description for optional dependency
+            local opt_desc=$(get_app_config "$opt_dep" "description")
+            log_info "Application: $opt_dep"
+            log_info "Description: $opt_desc"
+            log_info "Status: Not installed (optional for $app_name)"
+            echo ""
+            
+            if confirm_action "Install $opt_dep? (Recommended for enhanced functionality)"; then
+                log_info "Installing optional dependency: $opt_dep"
+                echo ""
+                
+                # Find and run optional dependency installer
+                opt_script=$(find "${SCRIPT_DIR}/apps" -name "$opt_dep" -type d -exec test -f "{}/install.sh" \; -print -quit)
+                
+                if [ -n "$opt_script" ]; then
+                    log_info "═══════════════════════════════════════════"
+                    log_info "  Starting installer: $opt_dep"
+                    log_info "═══════════════════════════════════════════"
+                    echo ""
+                    
+                    bash "${opt_script}/install.sh"
+                    OPT_EXIT_CODE=$?
+                    
+                    echo ""
+                    log_info "═══════════════════════════════════════════"
+                    log_info "  Installer finished: $opt_dep (exit code: $OPT_EXIT_CODE)"
+                    log_info "═══════════════════════════════════════════"
+                    
+                    if [ $OPT_EXIT_CODE -ne 0 ]; then
+                        log_warn "Optional dependency installation had issues"
+                        log_info "You can install it later manually if needed"
+                    else
+                        log_success "Optional dependency installed: $opt_dep"
+                    fi
+                    echo ""
+                else
+                    log_error "Cannot find installer for: $opt_dep"
+                fi
+            else
+                log_info "Skipping optional dependency: $opt_dep"
+                log_info "You can install it later: ./orchestrator.sh"
+                echo ""
+            fi
+        else
+            log_success "✓ Optional dependency already installed: $opt_dep"
+        fi
+    done
+    
+    return 0
+}
+
 clear
 echo "=============================================="
 echo "  Instalare Aplicații"
@@ -316,6 +387,18 @@ if [ "$choice" -ge 1 ] && [ "$choice" -lt "$counter" ]; then
         fi
     else
         log_info "No dependencies required for: $app"
+    fi
+    echo ""
+    
+    # Check for optional dependencies (recommended enhancements)
+    log_step "Checking optional enhancements..."
+    app_opt_deps=$(get_app_config "$app" "optional_dependencies" 2>/dev/null || echo "")
+    
+    if [ -n "$app_opt_deps" ]; then
+        log_info "Optional enhancements available: $app_opt_deps"
+        install_optional_dependencies "$app"
+    else
+        log_info "No optional enhancements for: $app"
     fi
     echo ""
     

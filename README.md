@@ -29,9 +29,9 @@ my-scripts/
 │   ├── os-detect.sh            # OS detection & package management (278 lines)
 │   └── preflight.sh            # Resource validation before install (140 lines)
 │
-├── apps/                        # Application installers (22 apps)
+├── apps/                        # Application installers (23 apps)
 │   ├── infrastructure/         # 5 apps (Docker, Nginx, Portainer, Certbot, Arcane)
-│   ├── databases/              # 4 apps (PostgreSQL, MariaDB, MongoDB, Redis)
+│   ├── databases/              # 5 apps (PostgreSQL, MariaDB, MongoDB, Redis, Redis Docker)
 │   ├── monitoring/             # 4 apps (Grafana, Prometheus, Netdata, Uptime Kuma)
 │   ├── automation/             # 1 app (n8n)
 │   ├── ai/                     # 2 apps (Ollama, llama.cpp)
@@ -52,12 +52,12 @@ my-scripts/
 
 **Statistics:**
 - **9,000+ lines** of production bash code
-- **22 installers** (5,500+ lines)
+- **23 installers** (5,700+ lines)
 - **5 libraries** (1,063 lines)
 - **5 tools** (1,542 lines)
-- **1 orchestrator** (949 lines)
+- **1 orchestrator** (373 lines)
 
-## Available Applications (22)
+## Available Applications (23)
 
 ### Infrastructure (5)
 - **Docker Engine** - Container runtime (auto-installed as dependency)
@@ -66,11 +66,12 @@ my-scripts/
 - **Certbot** - SSL certificate automation (Let's Encrypt, optional for n8n)
 - **Arcane** - Modern Docker management UI
 
-### Databases (4)
+### Databases (5)
 - **PostgreSQL** - Relational DB with pgvector for AI embeddings (uuid-ossp, hstore, pg_trgm, btree_gin, btree_gist, vector)
 - **MariaDB** - MySQL-compatible database
 - **MongoDB** - NoSQL document database
-- **Redis** - In-memory cache & data store (native installation)
+- **Redis (Native)** - In-memory cache & data store (host installation)
+- **Redis (Docker)** - Containerized Redis with dynamic network connections
 
 ### Monitoring (4)
 - **Grafana** - Analytics & visualization dashboards
@@ -79,7 +80,7 @@ my-scripts/
 - **Uptime Kuma** - Uptime monitoring & status pages
 
 ### Automation (1)
-- **n8n** - Workflow automation with SSL, PostgreSQL, Redis queue, and AI integration
+- **n8n** - Workflow automation with SSL, PostgreSQL, Redis queue mode, and AI integration (Ollama)
 
 ### AI (2)
 - **Ollama** - Self-hosted LLM runtime with on-demand loading (Llama, Mistral, Gemma, CodeLlama, etc.)
@@ -98,16 +99,32 @@ my-scripts/
 ## Production Features
 ### 🆕 Recent Improvements (January 2026)
 
+**Architecture Redesign - Modular Network Isolation:**
+- ✅ **Standalone Services**: Redis Docker and Ollama run without predefined networks
+- ✅ **Dynamic Network Connections**: Applications connect services to their networks on-demand
+- ✅ **Multi-Network Support**: N8n connected to both n8n_network (isolated) and vps_network (PostgreSQL access)
+- ✅ **Smart Dependencies**: N8n installer automatically connects Redis and Ollama to n8n_network
+- ✅ **Service Discovery**: Ollama searches for n8n_network during installation and auto-connects
+
 **N8N Enhancements:**
+- ✅ **Queue Mode**: Bull Queue with Redis for production-ready parallel workflow execution
 - ✅ Automatic PostgreSQL database creation with isolated credentials
-- ✅ Redis queue integration for production workloads
-- ✅ Improved credential management (partial credential support)
-- ✅ Enhanced nginx configuration with WebSocket support
+- ✅ Redis containerized connection via n8n_network (not host-bound)
+- ✅ Removed Basic Auth - uses database-backed user management instead
+- ✅ Enhanced Nginx configuration with proper variable interpolation (fixed `\$` escaping bug)
 - ✅ **Flexible SSL options**: Let's Encrypt (certbot) or self-signed certificates
 - ✅ Automatic fallback to self-signed on certbot rate limits
 - ✅ Self-signed certificates compatible with Cloudflare SSL mode "Full"
-- ✅ Fixed Docker networking for Redis connectivity (172.17.0.1)
 - ✅ File permissions fix for n8n data directory (UID 1000)
+- ✅ **Credentials Isolation**: Separate `.env_redis-docker` for containerized Redis
+
+**Redis Architecture:**
+- ✅ **Redis Docker**: New containerized option with standalone deployment
+- ✅ **Redis Native**: Legacy host-based installation (still available)
+- ✅ **Separate Credentials**: `.env_redis` vs `.env_redis-docker`
+- ✅ **No Port Conflicts**: Can run both simultaneously (host vs container isolation)
+- ✅ **Dynamic Networking**: Applications connect Redis to their networks as needed
+- ✅ **Orchestrator Support**: Automatic redis-docker installation for n8n dependencies
 
 **PostgreSQL Improvements:**
 - ✅ **pgvector extension** - AI embeddings and vector similarity search
@@ -119,11 +136,14 @@ my-scripts/
 - ✅ Secure random password generation (32 chars)
 
 **AI Runtime Integration:**
-- ✅ **Ollama**: On-demand model loading (~50MB idle, ~4GB when active)
+- ✅ **Ollama**: Standalone container with on-demand network connections
+- ✅ **Network Architecture**: Auto-connects to n8n_network during Ollama installation
+- ✅ **Dynamic Discovery**: N8n installer detects and connects Ollama if available
+- ✅ **Resource Efficiency**: ~50MB idle, ~4GB when active (on-demand model loading)
 - ✅ **llama.cpp**: Manual loading for rare HuggingFace models (OpenAI-compatible)
-- ✅ **Network**: Both on vps_network (internal access only)
-- ✅ **n8n Integration**: Native Ollama node + OpenAI node for llama.cpp
+- ✅ **N8n Integration**: Native Ollama node + OpenAI node for llama.cpp
 - ✅ **Use case**: Local LLM inference without API costs, data stays on-premise
+- ✅ **Isolation**: No direct PostgreSQL or Redis access - communicates only with N8n
 - ✅ CPU-optimized (no GPU required)
 ### �� Audit Logging
 All critical operations tracked in `~/.vps-secrets/.audit.log`:
@@ -201,17 +221,64 @@ Certificate expiry tracking with alerts:
 
 ## Security Features
 
+### 🏗️ Docker Network Architecture
+
+**Multi-Network Isolation Strategy:**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Standalone Services (No Networks)                       │
+├─────────────────────────────────────────────────────────┤
+│ redis          - Connected by applications on-demand    │
+│ ollama         - Connected by applications on-demand    │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ vps_network (Global Infrastructure - 172.18.0.0/16)     │
+├─────────────────────────────────────────────────────────┤
+│ postgres       - Shared database server                 │
+│ n8n            - Multi-homed (also in n8n_network)      │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ n8n_network (Application Isolated - 172.19.0.0/16)      │
+├─────────────────────────────────────────────────────────┤
+│ n8n            - Workflow orchestrator                   │
+│ redis          - Dynamically connected by n8n installer │
+│ ollama         - Dynamically connected by n8n installer │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Communication Flows:**
+- **N8n → PostgreSQL**: Via `vps_network` (postgres:5432)
+- **N8n → Redis**: Via `n8n_network` (redis:6379) - queue/cache
+- **N8n → Ollama**: Via `n8n_network` (ollama:11434) - LLM inference
+- **Ollama ⚡ PostgreSQL**: ❌ No direct access (isolated)
+- **Redis ⚡ PostgreSQL**: ❌ No direct access (isolated)
+
+**Benefits:**
+- ✅ **Service Isolation**: Ollama and Redis don't communicate directly
+- ✅ **N8n as Mediator**: All data flows through N8n workflows
+- ✅ **Security**: Services only access what they need
+- ✅ **Scalability**: Add services without network conflicts
+- ✅ **Flexibility**: Applications choose which services to connect
+
+## Security Features
+
 ✅ **Random credentials** - 32-64 character passwords  
 ✅ **Random DB names** - `db_a3k9m2x7p5q1` (unpredictable)  
 ✅ **Random usernames** - `user_x8n4k2m9p7q5`  
 ✅ **No defaults** - PostgreSQL, Grafana use random usernames  
 ✅ **Secure storage** - `~/.vps-secrets/` (600/700 permissions)  
+✅ **Credential Isolation** - Separate files per service (`.env_redis` vs `.env_redis-docker`)  
 ✅ **Audit logging** - All operations tracked  
 ✅ **Resource limits** - Databases cannot exhaust system  
 ✅ **Pre-flight checks** - Validation before installation  
 ✅ **SSL certificates** - Let's Encrypt (auto-renewal) or self-signed (Cloudflare compatible)  
 ✅ **Dashboard auth** - Basic Auth protected  
-✅ **Docker isolation** - Dedicated network (vps_network)  
+✅ **Network Isolation** - Multi-network architecture with service segregation  
+✅ **Docker isolation** - Dedicated networks (vps_network, n8n_network, etc.)  
+✅ **No Direct Access** - Services communicate only through N8n workflows  
 ✅ **Fail2ban** - Intrusion prevention  
 ✅ **Firewall** - Universal UFW/firewalld support
 

@@ -460,7 +460,7 @@ if run_sudo docker ps --format '{{.Names}}' | grep -q "^ollama$"; then
         log_success "✓ Ollama connected to n8n_network"
     fi
 else
-    log_info "Ollama not found (install later if needed)"
+    log_info "Ollama not installed (add it via orchestrator optional dependencies)"
 fi
 echo ""
 
@@ -905,6 +905,17 @@ echo "  Port: 6379"
 echo "  Mode: $EXECUTION_MODE"
 echo "  Connection: via n8n_network (dynamically connected)"
 echo ""
+
+# Display Ollama status if it was installed or detected
+if run_sudo docker ps --format '{{.Names}}' | grep -q "^ollama$"; then
+    log_info "AI Integration - Ollama:"
+    echo "  Status: Installed and connected"
+    echo "  Access: http://ollama:11434 (from n8n workflows)"
+    echo "  Models: docker exec ollama ollama list"
+    echo "  Pull model: docker exec ollama ollama pull mistral"
+    echo "  Use in n8n: Add 'Ollama' node to workflows"
+    echo ""
+fi
 
 log_info "Security & SSL:"
 echo "  Domain: $N8N_DOMAIN"
