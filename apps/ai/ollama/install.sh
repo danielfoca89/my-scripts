@@ -142,26 +142,11 @@ while [ $COUNT -lt $RETRIES ]; do
 done
 echo ""
 
-# Download default model (gemma3)
-log_step "Step 7: Downloading default model (gemma3)"
-log_info "Downloading gemma3 model (this may take a few minutes)..."
-if run_sudo docker exec $CONTAINER_NAME ollama pull gemma3; then
-    log_success "gemma3 model downloaded successfully"
-else
-    log_warn "Failed to download gemma3, you can download it later manually"
-    log_info "Command: docker exec ollama ollama pull gemma3"
-fi
-echo ""
-
 # Display installation info
 log_success "═══════════════════════════════════════════"
 log_success "  Ollama Installation Complete!"
 log_success "═══════════════════════════════════════════"
 audit_log "INSTALL_COMPLETE" "$APP_NAME" "Standalone container, connected to n8n_network if available"
-echo ""
-
-log_info "Default Model:"
-echo "  gemma3: Downloaded and ready to use"
 echo ""
 
 log_info "Access Information:"
